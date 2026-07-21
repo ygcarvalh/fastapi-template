@@ -1,0 +1,87 @@
+from collections.abc import AsyncGenerator, Awaitable, Callable
+
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    create_async_engine,
+)
+
+import app.models  # noqa: F401
+from app.core.config import get_settings
+from app.db.base import Base
+from app.db.session import get_session
+from app.main import app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def engine() -> AsyncGenerator[AsyncEngine]:
+    engine = create_async_engine(get_settings().test_database_url)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(engine: AsyncEngine) -> AsyncGenerator[AsyncSession]:
+    connection = await engine.connect()
+    transaction = await connection.begin()
+    session = AsyncSession(
+        bind=connection,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+    try:
+        yield session
+    finally:
+        await session.close()
+        await transaction.rollback()
+        await connection.close()
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient]:
+    async def override_get_session() -> AsyncGenerator[AsyncSession]:
+        yield db_session
+        await db_session.commit()
+
+    app.dependency_overrides[get_session] = override_get_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+def user_factory(
+    client: AsyncClient,
+) -> Callable[..., Awaitable[dict[str, object]]]:
+    async def _create(
+        email: str = "user@example.com", password: str = "secret123"
+    ) -> dict[str, object]:
+        response = await client.post(
+            "/api/v1/users", json={"email": email, "password": password}
+        )
+        assert response.status_code == 201
+        return response.json()
+
+    return _create
+
+
+@pytest_asyncio.fixture
+async def auth_client(
+    client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> AsyncClient:
+    email, password = "auth@example.com", "secret123"
+    await user_factory(email=email, password=password)
+    response = await client.post(
+        "/api/v1/auth/login", data={"username": email, "password": password}
+    )
+    token = response.json()["access_token"]
+    client.headers["Authorization"] = f"Bearer {token}"
+    return client
