@@ -7,6 +7,16 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore"
+    groups:
+      # Tooling never reaches production, so a single PR per week is enough.
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+      # Runtime patches ship together; majors and minors stay separate so a
+      # breaking change is never buried in a batch.
+      runtime-patches:
+        dependency-type: production
+        update-types: [patch]
 
   - package-ecosystem: github-actions
     directory: /
@@ -14,6 +24,9 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore"
+    groups:
+      actions:
+        patterns: ["*"]
 
   - package-ecosystem: docker
     directory: /
@@ -21,3 +34,6 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore"
+    groups:
+      base-images:
+        patterns: ["*"]
