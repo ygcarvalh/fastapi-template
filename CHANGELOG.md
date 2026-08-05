@@ -20,6 +20,7 @@ the template.
 
 - Rewrite security notes in project voice
 - Add badges and correct token wording
+- Regenerate changelog after rewording
 
 ### Features
 
@@ -30,12 +31,13 @@ the template.
 - Harden headers, docs gating, rate limits
 - Add timestamps mixin and user roles
 - Soft delete users and items
-- Add rotating refresh tokens
+- Add refresh tokens with type claims
 
 ### Miscellaneous
 
-- Lint async and ruff-specific rules
+- Enable async and ruff lint rules
 - Add coverage, changelog, and audit tools
+- Add ci pipeline, changelog, and license
 
 ### Refactoring
 
@@ -46,7 +48,3 @@ the template.
 
 - Detect drift between models and migrations
 - Cover auth failures and transaction boundary
-
-### Ci
-
-- Add pipeline, changelog, and license
