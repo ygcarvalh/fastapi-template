@@ -18,6 +18,19 @@ async def test_create_and_list_item(auth_client: AsyncClient) -> None:
     assert [i["id"] for i in listing.json()["items"]] == [item["id"]]
 
 
+async def test_get_single_item_returns_it(auth_client: AsyncClient) -> None:
+    created = await auth_client.post(
+        "/api/v1/items", json={"title": "fetch me", "description": "details"}
+    )
+    item_id = created.json()["id"]
+
+    response = await auth_client.get(f"/api/v1/items/{item_id}")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "fetch me"
+    assert response.json()["description"] == "details"
+
+
 async def test_list_items_returns_a_page_envelope(auth_client: AsyncClient) -> None:
     await auth_client.post("/api/v1/items", json={"title": "only"})
 
