@@ -30,3 +30,6 @@ class UserService:
         users = await self._repo.list_all(limit, offset)
         total = await self._repo.count_all()
         return users, total
+
+    async def deactivate(self, user: User) -> None:
+        await self._repo.soft_delete(user)

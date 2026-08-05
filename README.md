@@ -111,6 +111,30 @@ A caller without the role gets 403 and `{"detail": "Insufficient permissions"}`,
 caller without a token still gets 401, because the router-level `RequireAuth` runs first.
 New accounts are created as `user`; promote deliberately.
 
+## Soft delete
+
+`DELETE /api/v1/items/{id}` and `DELETE /api/v1/users/me` stamp `deleted_at` instead of
+removing rows, so the history survives an accidental delete. Repositories filter on
+`deleted_at IS NULL`, which is written out in each query rather than installed as a
+global loader rule, because a query that quietly rewrites itself is hard to reason about
+in a template you are about to copy.
+
+Two details are easy to get wrong:
+
+- A plain unique constraint on `email` would keep a deactivated address reserved
+  forever, so the address becomes unusable rather than free. The template uses a partial
+  unique index instead, `unique on (email) where deleted_at is null`, which still
+  rejects two active accounts on one address while letting a deactivated one register
+  again.
+- `User.items` cascades with `all, delete-orphan`, which deletes rows outright. So
+  deactivating an account retires its items through `ItemService.delete_all_for_owner`
+  before the user row is stamped, and the ORM cascade stays reserved for a real hard
+  delete.
+
+Deactivation ends access immediately: `get_by_email` and `get` both filter deleted rows,
+so a deactivated account cannot log in and an already issued token stops working on the
+next request.
+
 ## Quickstart with Docker
 
 Requires Docker with Compose. Generate a secret first, because the app refuses to

@@ -8,6 +8,7 @@ class FakeUserRepository:
     def __init__(self, users: Sequence[User] = ()) -> None:
         self._users: list[User] = list(users)
         self.created: list[User] = []
+        self.deactivated: list[User] = []
 
     async def get_by_email(self, email: str) -> User | None:
         return next((user for user in self._users if user.email == email), None)
@@ -26,6 +27,10 @@ class FakeUserRepository:
 
     async def count_all(self) -> int:
         return len(self._users)
+
+    async def soft_delete(self, user: User) -> None:
+        user.mark_deleted()
+        self.deactivated.append(user)
 
 
 class FakeItemRepository:
@@ -57,6 +62,11 @@ class FakeItemRepository:
         self._items.append(item)
         return item
 
-    async def delete(self, item: Item) -> None:
+    async def soft_delete(self, item: Item) -> None:
+        item.mark_deleted()
         self._items.remove(item)
         self.deleted.append(item)
+
+    async def soft_delete_for_owner(self, owner_id: int) -> None:
+        for item in [i for i in self._items if i.owner_id == owner_id]:
+            await self.soft_delete(item)

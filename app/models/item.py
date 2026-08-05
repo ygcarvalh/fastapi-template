@@ -4,13 +4,13 @@ from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import TimestampMixin
+from app.db.mixins import SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.user import User
 
 
-class Item(Base, TimestampMixin):
+class Item(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
