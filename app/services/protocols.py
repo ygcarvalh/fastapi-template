@@ -1,0 +1,25 @@
+from collections.abc import Sequence
+from typing import Protocol
+
+from app.models.item import Item
+from app.models.user import User
+
+
+class SupportsFindUserByEmail(Protocol):
+    async def get_by_email(self, email: str) -> User | None: ...
+
+
+class UserRepositoryProtocol(SupportsFindUserByEmail, Protocol):
+    async def get(self, user_id: int) -> User | None: ...
+
+    async def create(self, user: User) -> User: ...
+
+
+class ItemRepositoryProtocol(Protocol):
+    async def list_for_owner(self, owner_id: int) -> Sequence[Item]: ...
+
+    async def get_for_owner(self, item_id: int, owner_id: int) -> Item | None: ...
+
+    async def create(self, item: Item) -> Item: ...
+
+    async def delete(self, item: Item) -> None: ...

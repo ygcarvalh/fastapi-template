@@ -15,7 +15,7 @@ repos:
         require_serial: true
       - id: mypy
         name: mypy
-        entry: uv run mypy app
+        entry: uv run mypy app tests
         language: system
         types: [python]
         pass_filenames: false

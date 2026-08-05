@@ -2,12 +2,12 @@ from collections.abc import Sequence
 
 from app.core.exceptions import NotFoundError
 from app.models.item import Item
-from app.repositories.item_repo import ItemRepository
 from app.schemas.item import ItemCreate, ItemUpdate
+from app.services.protocols import ItemRepositoryProtocol
 
 
 class ItemService:
-    def __init__(self, repo: ItemRepository) -> None:
+    def __init__(self, repo: ItemRepositoryProtocol) -> None:
         self._repo = repo
 
     async def list_for_owner(self, owner_id: int) -> Sequence[Item]:

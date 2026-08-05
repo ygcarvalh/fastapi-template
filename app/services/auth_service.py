@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from app.core.exceptions import AuthError
 from app.core.security import create_access_token, hash_password, verify_password
-from app.repositories.user_repo import UserRepository
+from app.services.protocols import SupportsFindUserByEmail
 
 
 @lru_cache(maxsize=1)
@@ -11,7 +11,7 @@ def _hash_for_absent_user() -> str:
 
 
 class AuthService:
-    def __init__(self, repo: UserRepository) -> None:
+    def __init__(self, repo: SupportsFindUserByEmail) -> None:
         self._repo = repo
 
     async def authenticate(self, email: str, password: str) -> str:

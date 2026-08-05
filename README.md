@@ -12,6 +12,7 @@ Request → Router (HTTP) → Service (business logic) → Repository (DB) → P
 
 - `app/api/v1/routes` — HTTP layer (validation, status codes), no business logic.
 - `app/services` — business rules, HTTP-agnostic, raises domain exceptions.
+- `app/services/protocols.py` — the repository interfaces the services depend on.
 - `app/repositories` — the only layer that queries the database.
 - `app/models` — SQLAlchemy ORM entities.
 - `app/schemas` — Pydantic request/response contracts.
@@ -22,6 +23,12 @@ The transaction boundary is the request: `get_session` commits on success and ro
 back on error, so services and repositories only `flush`. Domain exceptions
 (`NotFoundError`, `ConflictError`, `AuthError`) are mapped to HTTP responses by
 handlers registered in `app/main.py`.
+
+Dependencies point inward. Services never import `app/repositories`; they depend on
+`Protocol` interfaces they own in `app/services/protocols.py`, and the concrete
+repositories are wired in at the composition root (`app/api/deps.py`). Because mypy
+covers `tests` as well as `app`, a repository or a test fake that drifts from a
+protocol is a type error rather than a green test suite hiding a broken contract.
 
 An example `Item` resource (owned by a `User`, JWT-protected) demonstrates the full
 slice end to end.
@@ -92,11 +99,12 @@ Copy the `Item` slice, renaming across the layers:
 
 1. `app/models/<name>.py` — ORM model (register it in `app/models/__init__.py`).
 2. `app/schemas/<name>.py` — Pydantic schemas.
-3. `app/repositories/<name>_repo.py` — queries.
-4. `app/services/<name>_service.py` — business rules.
-5. `app/api/v1/routes/<name>.py` — routes; include it in `app/api/v1/router.py`.
-6. Add a dependency provider in `app/api/deps.py`.
-7. Write unit + integration tests first.
+3. `app/services/protocols.py` — the repository interface the service needs.
+4. `app/repositories/<name>_repo.py` — queries implementing that interface.
+5. `app/services/<name>_service.py` — business rules, depending on the protocol.
+6. `app/api/v1/routes/<name>.py` — routes; include it in `app/api/v1/router.py`.
+7. Add a dependency provider in `app/api/deps.py`.
+8. Write unit + integration tests first, with fakes in `tests/unit/fakes.py`.
 
 ## Migrations
 

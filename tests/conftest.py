@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-import app.models  # noqa: F401
+from app import models as _models  # noqa: F401
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import get_session
@@ -56,7 +57,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient]:
     app.dependency_overrides.clear()
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 def user_factory(
     client: AsyncClient,
 ) -> Callable[..., Awaitable[dict[str, object]]]:
@@ -67,7 +68,8 @@ def user_factory(
             "/api/v1/users", json={"email": email, "password": password}
         )
         assert response.status_code == 201
-        return response.json()
+        created: dict[str, object] = response.json()
+        return created
 
     return _create
 
