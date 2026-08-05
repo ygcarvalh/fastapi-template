@@ -6,44 +6,28 @@ All notable changes to this template. Generated from Conventional Commits with [
 
 ### Bug fixes
 
-- Close login user-enumeration timing oracle
-- Bound password length to bcrypt input limit
-- Harden secret key and JWT algorithm config
-- Correct PATCH omitted vs null semantics
-- Dispose the database engine on shutdown
-- Make test database url optional
-- Stop leaking details in error responses
+- Replace changelog diff check with commit lint
 
 ### Documentation
 
-- Rewrite security notes in project voice
-- Add badges and correct token wording
-- Regenerate changelog after rewording
-- Unwrap prose in markdown sources
+- Add security policy and contributing guide
+
+### Features
+
+- Add release workflow for version tags
+
+### Miscellaneous
+
+- Bump version to 0.2.0
+
+## 0.2.0 - 2026-08-05
+
+### Features
+
+- Harden security and expand the template (#1)
+
+## 0.1.0 - 2026-07-21
 
 ### Features
 
 - Add fastapi template
-- Add database readiness probe
-- Paginate the item listing
-- Containerize the app and database
-- Harden headers, docs gating, rate limits
-- Add timestamps mixin and user roles
-- Soft delete users and items
-- Add refresh tokens with type claims
-
-### Miscellaneous
-
-- Enable async and ruff lint rules
-- Add coverage, changelog, and audit tools
-- Add ci pipeline, changelog, and license
-
-### Refactoring
-
-- Invert service repository dependency
-- Make private routes protected by default
-
-### Tests
-
-- Detect drift between models and migrations
-- Cover auth failures and transaction boundary
