@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     secret_key: Annotated[str, Field(min_length=MIN_SECRET_KEY_LENGTH)]
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
 
     docs_enabled: bool = True
     hsts_enabled: bool = False

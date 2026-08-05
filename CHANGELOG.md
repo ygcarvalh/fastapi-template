@@ -24,6 +24,7 @@ the template.
 - Containerize the app and database
 - Harden headers, docs gating, rate limits
 - Add timestamps mixin and user roles
+- Soft delete users and items
 
 ### Miscellaneous
 

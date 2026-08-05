@@ -2,6 +2,7 @@ from app.main import app
 
 PUBLIC_OPERATIONS = {
     ("post", "/api/v1/auth/login"),
+    ("post", "/api/v1/auth/refresh"),
     ("post", "/api/v1/users"),
     ("get", "/health"),
     ("get", "/health/ready"),

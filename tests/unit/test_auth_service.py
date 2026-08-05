@@ -4,7 +4,12 @@ from collections.abc import Sequence
 import pytest
 
 from app.core.exceptions import AuthError
-from app.core.security import decode_access_token, hash_password
+from app.core.security import (
+    create_refresh_token,
+    decode_access_token,
+    decode_refresh_token,
+    hash_password,
+)
 from app.models.user import User
 from app.services.auth_service import AuthService
 from tests.unit.fakes import FakeUserRepository
@@ -27,12 +32,27 @@ async def _time_rejected_login(users: Sequence[User]) -> tuple[float, str]:
     return time.perf_counter() - start, caught.value.detail
 
 
-async def test_authenticate_returns_a_token_for_the_right_password() -> None:
+async def test_authenticate_returns_a_token_pair_for_the_right_password() -> None:
     service = AuthService(FakeUserRepository([_registered_user()]))
 
-    token = await service.authenticate(EMAIL, PASSWORD)
+    pair = await service.authenticate(EMAIL, PASSWORD)
 
-    assert decode_access_token(token) == "7"
+    assert decode_access_token(pair.access_token) == "7"
+    assert decode_refresh_token(pair.refresh_token) == "7"
+
+
+async def test_refresh_rejects_a_non_numeric_subject() -> None:
+    service = AuthService(FakeUserRepository([_registered_user()]))
+
+    with pytest.raises(AuthError):
+        await service.refresh(create_refresh_token("not-a-user-id"))
+
+
+async def test_refresh_rejects_a_subject_with_no_matching_user() -> None:
+    service = AuthService(FakeUserRepository())
+
+    with pytest.raises(AuthError):
+        await service.refresh(create_refresh_token("404"))
 
 
 async def test_absent_user_login_costs_as_much_as_wrong_password() -> None:

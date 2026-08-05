@@ -111,6 +111,24 @@ A caller without the role gets 403 and `{"detail": "Insufficient permissions"}`,
 caller without a token still gets 401, because the router-level `RequireAuth` runs first.
 New accounts are created as `user`; promote deliberately.
 
+## Tokens
+
+`POST /api/v1/auth/login` returns a short-lived access token and a longer-lived refresh
+token. `POST /api/v1/auth/refresh` exchanges the refresh token for a fresh pair, so the
+old one stops being the only key to the account.
+
+Both tokens carry a `typ` claim, and each decoder insists on its own value. Without that
+check a refresh token would work as a bearer token on any protected route, which hands
+back the long lifetime the short access expiry was meant to avoid. The template tests
+both directions of that confusion.
+
+Refresh tokens are stateless, which buys a refresh with no database write but means you
+cannot revoke one before it expires. `REFRESH_TOKEN_EXPIRE_DAYS` is therefore the window
+in which a stolen token stays useful, so keep it in days. Deactivating an account does
+end refreshing immediately, because `refresh` reloads the user and the repository filters
+soft-deleted rows. If you need real revocation, store the refresh tokens hashed with a
+`revoked_at` column and check them on refresh.
+
 ## Soft delete
 
 `DELETE /api/v1/items/{id}` and `DELETE /api/v1/users/me` stamp `deleted_at` instead of
