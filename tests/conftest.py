@@ -18,7 +18,12 @@ from app.main import app
 
 @pytest_asyncio.fixture(scope="session")
 async def engine() -> AsyncGenerator[AsyncEngine]:
-    engine = create_async_engine(get_settings().test_database_url)
+    test_database_url = get_settings().test_database_url
+    if test_database_url is None:
+        raise RuntimeError(
+            "TEST_DATABASE_URL is required to run the suite; copy .env.example to .env"
+        )
+    engine = create_async_engine(test_database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine

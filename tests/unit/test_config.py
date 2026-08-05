@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -37,3 +39,14 @@ def test_rejects_the_example_placeholder_secret_key() -> None:
 def test_rejects_unsupported_jwt_algorithm() -> None:
     with pytest.raises(ValidationError):
         _build(_STRONG_SECRET, jwt_algorithm="none")
+
+
+def test_does_not_require_a_test_database_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    settings = Settings(database_url=_DATABASE_URL, secret_key=_STRONG_SECRET)
+
+    assert settings.test_database_url is None

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str
-    test_database_url: str
+    test_database_url: str | None = None
     secret_key: Annotated[str, Field(min_length=MIN_SECRET_KEY_LENGTH)]
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = 30
