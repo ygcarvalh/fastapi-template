@@ -187,13 +187,17 @@ uv run alembic downgrade -1
 
 Changing a model without generating a migration fails the suite. The check applies every migration to a fresh database and diffs the result against `Base.metadata`, so the two cannot drift apart silently.
 
-## Changelog
+## Changelog and releases
 
-`CHANGELOG.md` is generated from Conventional Commits, and CI fails when it is stale:
+`CHANGELOG.md` is generated from Conventional Commits with [git-cliff](https://git-cliff.org):
 
 ```bash
 uv run git-cliff --output CHANGELOG.md
 ```
+
+Regenerate it when you cut a release rather than on every merge. CI checks that commit subjects carry a valid type, which is all the generator needs. It deliberately does not diff the committed file against a fresh generation: pull requests are squash merged, so the squashed subject replaces the branch subjects the file was written from, and the two can never match.
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which generates the notes for that tag and opens a GitHub release with them. `CONTRIBUTING.md` has the full sequence.
 
 The file tracks changes to the template itself. Clear it when you start a project from this repository, since the history belongs to the template rather than your service.
 
@@ -208,7 +212,9 @@ uv run pytest --cov           # tests with coverage (fails under 90%)
 uv run pip-audit              # known vulnerabilities in dependencies
 ```
 
-CI runs all of these on every push and pull request, against a real PostgreSQL service container.
+CI runs all of these on every push and pull request, against a real PostgreSQL service container, and lints commit subjects on pull requests with `scripts/check-commit-messages.sh`.
+
+`CONTRIBUTING.md` covers the workflow and the release sequence. `SECURITY.md` covers how to report a vulnerability and what to change before deploying.
 
 ## Project layout
 
@@ -228,11 +234,15 @@ app/
   services/               # business logic
     protocols.py          # repository interfaces the services depend on
 alembic/                  # migration environment + versions
-scripts/                  # database bootstrap used by compose
+scripts/                  # database bootstrap used by compose, commit lint
 tests/
   unit/                   # logic against typed fakes
   integration/            # routes through the test database
 Dockerfile                # multi-stage build, non-root runtime
 compose.yaml              # PostgreSQL + API, migrations on start
-.github/workflows/ci.yml  # lint, types, tests, audit, changelog
+CONTRIBUTING.md           # setup, conventions, release sequence
+SECURITY.md               # reporting, posture, pre-deploy checklist
+.github/workflows/
+  ci.yml                  # lint, types, tests, audit, commit subjects
+  release.yml             # notes and GitHub release on a v* tag
 ```
