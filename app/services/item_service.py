@@ -25,10 +25,8 @@ class ItemService:
 
     async def update(self, item_id: int, owner_id: int, data: ItemUpdate) -> Item:
         item = await self.get_for_owner(item_id, owner_id)
-        if data.title is not None:
-            item.title = data.title
-        if data.description is not None:
-            item.description = data.description
+        for field, value in data.model_dump(exclude_unset=True).items():
+            setattr(item, field, value)
         return item
 
     async def delete(self, item_id: int, owner_id: int) -> None:

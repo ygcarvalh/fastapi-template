@@ -29,6 +29,47 @@ async def test_update_item(auth_client: AsyncClient) -> None:
     assert response.json()["title"] == "new"
 
 
+async def test_patch_clears_description_when_explicitly_null(
+    auth_client: AsyncClient,
+) -> None:
+    created = await auth_client.post(
+        "/api/v1/items", json={"title": "documented", "description": "some text"}
+    )
+    item_id = created.json()["id"]
+    assert created.json()["description"] == "some text"
+
+    response = await auth_client.patch(
+        f"/api/v1/items/{item_id}", json={"description": None}
+    )
+    assert response.status_code == 200
+    assert response.json()["description"] is None
+
+
+async def test_patch_leaves_omitted_description_untouched(
+    auth_client: AsyncClient,
+) -> None:
+    created = await auth_client.post(
+        "/api/v1/items", json={"title": "documented", "description": "some text"}
+    )
+    item_id = created.json()["id"]
+
+    response = await auth_client.patch(
+        f"/api/v1/items/{item_id}", json={"title": "retitled"}
+    )
+    assert response.status_code == 200
+    assert response.json()["title"] == "retitled"
+    assert response.json()["description"] == "some text"
+
+
+async def test_patch_rejects_null_title(auth_client: AsyncClient) -> None:
+    item_id = (await auth_client.post("/api/v1/items", json={"title": "keep"})).json()[
+        "id"
+    ]
+
+    response = await auth_client.patch(f"/api/v1/items/{item_id}", json={"title": None})
+    assert response.status_code == 422
+
+
 async def test_delete_item(auth_client: AsyncClient) -> None:
     item_id = (await auth_client.post("/api/v1/items", json={"title": "gone"})).json()[
         "id"
