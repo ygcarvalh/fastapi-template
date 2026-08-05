@@ -21,6 +21,12 @@ class FakeUserRepository:
         self.created.append(user)
         return user
 
+    async def list_all(self, limit: int, offset: int) -> Sequence[User]:
+        return self._users[offset : offset + limit]
+
+    async def count_all(self) -> int:
+        return len(self._users)
+
 
 class FakeItemRepository:
     def __init__(self, items: Sequence[Item] = ()) -> None:

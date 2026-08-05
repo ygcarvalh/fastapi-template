@@ -3,6 +3,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.models.user import UserRole
+
 BCRYPT_MAX_PASSWORD_BYTES = 72
 MIN_PASSWORD_LENGTH = 8
 
@@ -29,4 +31,6 @@ class UserRead(BaseModel):
 
     id: int
     email: EmailStr
+    role: UserRole
     created_at: datetime
+    updated_at: datetime

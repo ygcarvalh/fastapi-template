@@ -90,6 +90,27 @@ What the template does, and the decisions behind it.
 - **Reach the database over TLS** outside local development by appending `?ssl=require`
   to `DATABASE_URL`, which asyncpg reads when it connects.
 
+## Roles and timestamps
+
+Every table inherits `TimestampMixin` from `app/db/mixins.py`, which supplies
+`created_at` and an `updated_at` that PostgreSQL refreshes on write. Both come from
+`now()`, which returns the transaction start time, so a row created and modified inside
+one transaction carries identical values. They diverge once the writes land in separate
+transactions, which is what a request per change gives you.
+
+`User.role` is a `String(20)` mapped to the `UserRole` string enum rather than a
+PostgreSQL enum type. Adding a role is then an ordinary code change instead of an
+`ALTER TYPE` in a migration. Guard a route with the `require_role` factory:
+
+```python
+@private_router.get("", dependencies=[require_role(UserRole.ADMIN)])
+async def list_users(...): ...
+```
+
+A caller without the role gets 403 and `{"detail": "Insufficient permissions"}`, while a
+caller without a token still gets 401, because the router-level `RequireAuth` runs first.
+New accounts are created as `user`; promote deliberately.
+
 ## Quickstart with Docker
 
 Requires Docker with Compose. Generate a secret first, because the app refuses to

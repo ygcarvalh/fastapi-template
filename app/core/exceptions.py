@@ -28,6 +28,10 @@ class AuthError(DomainError):
     status_code = 401
 
 
+class ForbiddenError(DomainError):
+    status_code = 403
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     async def handle_domain_error(request: Request, exc: Exception) -> JSONResponse:
         err = cast(DomainError, exc)

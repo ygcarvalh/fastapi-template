@@ -14,6 +14,10 @@ class UserRepositoryProtocol(SupportsFindUserByEmail, Protocol):
 
     async def create(self, user: User) -> User: ...
 
+    async def list_all(self, limit: int, offset: int) -> Sequence[User]: ...
+
+    async def count_all(self) -> int: ...
+
 
 class ItemRepositoryProtocol(Protocol):
     async def list_for_owner(

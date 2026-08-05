@@ -22,6 +22,7 @@ the template.
 - Add database readiness probe
 - Paginate the item listing
 - Containerize the app and database
+- Harden headers, docs gating, rate limits
 
 ### Miscellaneous
 

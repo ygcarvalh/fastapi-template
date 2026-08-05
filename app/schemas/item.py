@@ -28,3 +28,4 @@ class ItemRead(BaseModel):
     description: str | None
     owner_id: int
     created_at: datetime
+    updated_at: datetime

@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.security import hash_password
 from app.models.user import User
@@ -23,3 +25,8 @@ class UserService:
         if user is None:
             raise NotFoundError("User not found")
         return user
+
+    async def list_all(self, limit: int, offset: int) -> tuple[Sequence[User], int]:
+        users = await self._repo.list_all(limit, offset)
+        total = await self._repo.count_all()
+        return users, total
