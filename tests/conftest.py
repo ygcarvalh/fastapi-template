@@ -11,9 +11,15 @@ from sqlalchemy.ext.asyncio import (
 
 from app import models as _models  # noqa: F401
 from app.core.config import get_settings
+from app.core.rate_limit import reset_rate_limits
 from app.db.base import Base
 from app.db.session import get_session
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits() -> None:
+    reset_rate_limits()
 
 
 @pytest_asyncio.fixture(scope="session")

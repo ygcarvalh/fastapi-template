@@ -37,3 +37,7 @@ the template.
 
 - Detect drift between models and migrations
 - Cover auth failures and transaction boundary
+
+### Ci
+
+- Add pipeline, changelog, and license

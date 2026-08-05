@@ -54,6 +54,42 @@ the OpenAPI schema and fails when a route is neither protected nor named in
 `PUBLIC_OPERATIONS`, so forgetting to protect one breaks the build instead of leaking
 data.
 
+## Security posture
+
+What the template does, and the decisions behind it.
+
+- **Login does not reveal whether an account exists.** A wrong password and an unknown
+  address both cost a full bcrypt verification and return the same 401 body. Without the
+  dummy hash on the unknown-address path the two differ by roughly 300 ms, which is
+  enough to enumerate every user in the database over the network.
+- **Registration does reveal it**, by answering 409 when an address is already in use.
+  That is a deliberate trade for a usable signup form, and it is the one place the
+  template leaks account existence. Closing it properly means always answering 202 and
+  sending a verification email, which needs a mail provider and a tokens table.
+- **Errors do not echo input.** The validation handler keeps `type`, `loc`, and `msg` and
+  drops `input`, because FastAPI's default 422 body repeats the rejected value, which
+  puts submitted passwords into response bodies and access logs.
+- **Unexpected exceptions return a flat 500** and log the traceback server side, so
+  stack traces and connection strings stay out of responses.
+- **Passwords are 8 to 72 bytes.** bcrypt refuses anything longer, so without the ceiling
+  a long passphrase becomes an unhandled 500 on an unauthenticated route.
+- **Auth endpoints are rate limited** through `LOGIN_RATE_LIMIT` and
+  `REGISTER_RATE_LIMIT`. The default limiter counts in memory, so it resets on restart
+  and counts per worker. Point slowapi at Redis before running more than one.
+- **`SECRET_KEY` must be at least 32 characters and cannot be the example value.** The
+  app refuses to start otherwise.
+- **`JWT_ALGORITHM` accepts only HS256, HS384, and HS512**, so a stray environment
+  variable cannot downgrade token verification.
+- **CSRF protection is absent on purpose.** Authentication is bearer-token only and no
+  cookies are set, so a cross-site request has nothing to ride on. Add CSRF protection if
+  you introduce cookie sessions.
+- **CORS is unconfigured**, which blocks cross-origin browser calls by default. If you
+  add `CORSMiddleware`, name the origins instead of using `*`.
+- **Set `HSTS_ENABLED=true` behind TLS.** It stays off by default so local HTTP works.
+- **Set `DOCS_ENABLED=false`** to withdraw `/docs`, `/redoc`, and `/openapi.json`.
+- **Reach the database over TLS** outside local development by appending `?ssl=require`
+  to `DATABASE_URL`, which asyncpg reads when it connects.
+
 ## Quickstart with Docker
 
 Requires Docker with Compose. Generate a secret first, because the app refuses to

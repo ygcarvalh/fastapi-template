@@ -12,6 +12,7 @@ dependencies = [
     "email-validator>=2.2",
     "pyjwt>=2.10",
     "pwdlib[bcrypt]>=0.2.1",
+    "slowapi>=0.1.9",
 ]
 
 [dependency-groups]

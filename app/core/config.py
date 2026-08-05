@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = 30
 
+    docs_enabled: bool = True
+    hsts_enabled: bool = False
+    login_rate_limit: str = "10/minute"
+    register_rate_limit: str = "5/minute"
+
     @field_validator("secret_key")
     @classmethod
     def reject_placeholder_secret_key(cls, value: str) -> str:
