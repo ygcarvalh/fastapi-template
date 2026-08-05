@@ -1,8 +1,6 @@
 # Changelog
 
-All notable changes to this template. Generated from Conventional Commits with
-[git-cliff](https://git-cliff.org). Clear this file when you start a project from
-the template.
+All notable changes to this template. Generated from Conventional Commits with [git-cliff](https://git-cliff.org). Clear this file when you start a project from the template.
 
 ## Unreleased
 
@@ -21,6 +19,7 @@ the template.
 - Rewrite security notes in project voice
 - Add badges and correct token wording
 - Regenerate changelog after rewording
+- Unwrap prose in markdown sources
 
 ### Features
 

@@ -59,9 +59,7 @@ testpaths = ["tests"]
 header = """
 # Changelog
 
-All notable changes to this template. Generated from Conventional Commits with
-[git-cliff](https://git-cliff.org). Clear this file when you start a project from
-the template.
+All notable changes to this template. Generated from Conventional Commits with [git-cliff](https://git-cliff.org). Clear this file when you start a project from the template.
 """
 body = """
 {% if version %}
