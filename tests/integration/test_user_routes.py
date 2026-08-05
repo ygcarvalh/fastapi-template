@@ -27,3 +27,23 @@ async def test_register_duplicate_returns_409(
 async def test_me_requires_auth(client: AsyncClient) -> None:
     response = await client.get("/api/v1/users/me")
     assert response.status_code == 401
+
+
+async def test_register_rejects_short_password(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/users", json={"email": "short@example.com", "password": "sh0rt"}
+    )
+    assert response.status_code == 422
+
+
+async def test_register_rejects_password_over_bcrypt_byte_limit(
+    client: AsyncClient,
+) -> None:
+    password = "é" * 40
+    assert len(password) <= 72
+    assert len(password.encode()) > 72
+
+    response = await client.post(
+        "/api/v1/users", json={"email": "multibyte@example.com", "password": password}
+    )
+    assert response.status_code == 422

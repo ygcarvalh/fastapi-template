@@ -12,16 +12,20 @@ dependencies = [
     "email-validator>=2.2",
     "pyjwt>=2.10",
     "pwdlib[bcrypt]>=0.2.1",
+    "slowapi>=0.1.9",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.26",
+    "pytest-cov>=6.0",
     "httpx>=0.28",
     "ruff>=0.8",
     "mypy>=1.13",
     "pre-commit>=4.0",
+    "git-cliff>=2.7",
+    "pip-audit>=2.7",
 ]
 
 [build-system]
@@ -38,7 +42,7 @@ extend-exclude = ["alembic/versions"]
 force-exclude = true
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "ASYNC", "RUF"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -50,3 +54,49 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+
+[tool.git-cliff.changelog]
+header = """
+# Changelog
+
+All notable changes to this template. Generated from Conventional Commits with [git-cliff](https://git-cliff.org). Clear this file when you start a project from the template.
+"""
+body = """
+{% if version %}
+## {{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}
+## Unreleased
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}
+{%- endfor %}
+{% endfor -%}
+"""
+trim = true
+
+[tool.git-cliff.git]
+conventional_commits = true
+filter_unconventional = true
+protect_breaking_commits = true
+sort_commits = "oldest"
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug fixes" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^test", group = "Tests" },
+    { message = "^docs", group = "Documentation" },
+    { message = "^(chore|style)", group = "Miscellaneous" },
+]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 90

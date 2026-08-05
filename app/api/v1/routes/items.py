@@ -1,20 +1,32 @@
-from fastapi import APIRouter, status
+from typing import Annotated
 
-from app.api.deps import CurrentUser, ItemServiceDep
+from fastapi import APIRouter, Query, status
+
+from app.api.deps import CurrentUser, ItemServiceDep, RequireAuth
 from app.schemas.item import ItemCreate, ItemRead, ItemUpdate
+from app.schemas.pagination import Page, PageParams
 
-router = APIRouter(prefix="/items", tags=["items"])
+private_router = APIRouter(prefix="/items", tags=["items"], dependencies=[RequireAuth])
 
 
-@router.get("")
+@private_router.get("")
 async def list_items(
-    current_user: CurrentUser, service: ItemServiceDep
-) -> list[ItemRead]:
-    items = await service.list_for_owner(current_user.id)
-    return [ItemRead.model_validate(item) for item in items]
+    current_user: CurrentUser,
+    service: ItemServiceDep,
+    page: Annotated[PageParams, Query()],
+) -> Page[ItemRead]:
+    items, total = await service.list_for_owner(
+        current_user.id, page.limit, page.offset
+    )
+    return Page(
+        items=[ItemRead.model_validate(item) for item in items],
+        total=total,
+        limit=page.limit,
+        offset=page.offset,
+    )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@private_router.post("", status_code=status.HTTP_201_CREATED)
 async def create_item(
     data: ItemCreate, current_user: CurrentUser, service: ItemServiceDep
 ) -> ItemRead:
@@ -22,7 +34,7 @@ async def create_item(
     return ItemRead.model_validate(item)
 
 
-@router.get("/{item_id}")
+@private_router.get("/{item_id}")
 async def get_item(
     item_id: int, current_user: CurrentUser, service: ItemServiceDep
 ) -> ItemRead:
@@ -30,7 +42,7 @@ async def get_item(
     return ItemRead.model_validate(item)
 
 
-@router.patch("/{item_id}")
+@private_router.patch("/{item_id}")
 async def update_item(
     item_id: int,
     data: ItemUpdate,
@@ -41,7 +53,7 @@ async def update_item(
     return ItemRead.model_validate(item)
 
 
-@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@private_router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_item(
     item_id: int, current_user: CurrentUser, service: ItemServiceDep
 ) -> None:

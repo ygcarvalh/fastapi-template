@@ -1,13 +1,13 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, params
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthError, NotFoundError
+from app.core.exceptions import AuthError, ForbiddenError, NotFoundError
 from app.core.security import decode_access_token
 from app.db.session import get_session
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.item_repo import ItemRepository
 from app.repositories.user_repo import UserRepository
 from app.services.item_service import ItemService
@@ -48,3 +48,14 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+RequireAuth = Depends(get_current_user)
+
+
+def require_role(*allowed: UserRole) -> params.Depends:
+    async def guard(current_user: CurrentUser) -> None:
+        if current_user.role not in allowed:
+            raise ForbiddenError("Insufficient permissions")
+
+    dependency: params.Depends = Depends(guard)
+    return dependency

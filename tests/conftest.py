@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
@@ -8,16 +9,27 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-import app.models  # noqa: F401
+from app import models as _models  # noqa: F401
 from app.core.config import get_settings
+from app.core.rate_limit import reset_rate_limits
 from app.db.base import Base
 from app.db.session import get_session
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def fresh_rate_limits() -> None:
+    reset_rate_limits()
+
+
 @pytest_asyncio.fixture(scope="session")
 async def engine() -> AsyncGenerator[AsyncEngine]:
-    engine = create_async_engine(get_settings().test_database_url)
+    test_database_url = get_settings().test_database_url
+    if test_database_url is None:
+        raise RuntimeError(
+            "TEST_DATABASE_URL is required to run the suite; copy .env.example to .env"
+        )
+    engine = create_async_engine(test_database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
@@ -56,7 +68,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient]:
     app.dependency_overrides.clear()
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 def user_factory(
     client: AsyncClient,
 ) -> Callable[..., Awaitable[dict[str, object]]]:
@@ -67,7 +79,8 @@ def user_factory(
             "/api/v1/users", json={"email": email, "password": password}
         )
         assert response.status_code == 201
-        return response.json()
+        created: dict[str, object] = response.json()
+        return created
 
     return _create
 
