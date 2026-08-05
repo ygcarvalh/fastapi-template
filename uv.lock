@@ -538,7 +538,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "email-validator", specifier = ">=2.2" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115" },
-    { name = "pwdlib", extras = ["bcrypt"], specifier = ">=0.2.1" },
+    { name = "pwdlib", extras = ["bcrypt"], specifier = ">=0.3.0" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "pyjwt", specifier = ">=2.10" },
     { name = "slowapi", specifier = ">=0.1.9" },
