@@ -38,7 +38,7 @@ extend-exclude = ["alembic/versions"]
 force-exclude = true
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "ASYNC", "RUF"]
 
 [tool.mypy]
 python_version = "3.13"
