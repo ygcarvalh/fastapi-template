@@ -82,21 +82,15 @@ jobs:
       - name: Audit dependencies for known vulnerabilities
         run: uv run pip-audit
 
-  changelog:
+  commits:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Check CHANGELOG.md is up to date
-        run: |
-          uv run git-cliff --output /tmp/CHANGELOG.generated.md
-          diff -u CHANGELOG.md /tmp/CHANGELOG.generated.md
+      - name: Check commit subjects are Conventional Commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/check-commit-messages.sh "$BASE_SHA..HEAD"
