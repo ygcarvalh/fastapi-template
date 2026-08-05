@@ -56,39 +56,45 @@ data.
 
 ## Security posture
 
-What the template does, and the decisions behind it.
+Login does not reveal whether an account exists. A wrong password and an unknown address
+both pay for a full bcrypt verification and come back with the same 401. Drop the dummy
+hash on the unknown-address path and the two diverge by roughly 300 ms, which is enough
+to enumerate the whole user table over the network.
 
-- **Login does not reveal whether an account exists.** A wrong password and an unknown
-  address both cost a full bcrypt verification and return the same 401 body. Without the
-  dummy hash on the unknown-address path the two differ by roughly 300 ms, which is
-  enough to enumerate every user in the database over the network.
-- **Registration does reveal it**, by answering 409 when an address is already in use.
-  That is a deliberate trade for a usable signup form, and it is the one place the
-  template leaks account existence. Closing it properly means always answering 202 and
-  sending a verification email, which needs a mail provider and a tokens table.
-- **Errors do not echo input.** The validation handler keeps `type`, `loc`, and `msg` and
-  drops `input`, because FastAPI's default 422 body repeats the rejected value, which
-  puts submitted passwords into response bodies and access logs.
-- **Unexpected exceptions return a flat 500** and log the traceback server side, so
-  stack traces and connection strings stay out of responses.
-- **Passwords are 8 to 72 bytes.** bcrypt refuses anything longer, so without the ceiling
-  a long passphrase becomes an unhandled 500 on an unauthenticated route.
-- **Auth endpoints are rate limited** through `LOGIN_RATE_LIMIT` and
-  `REGISTER_RATE_LIMIT`. The default limiter counts in memory, so it resets on restart
-  and counts per worker. Point slowapi at Redis before running more than one.
-- **`SECRET_KEY` must be at least 32 characters and cannot be the example value.** The
-  app refuses to start otherwise.
-- **`JWT_ALGORITHM` accepts only HS256, HS384, and HS512**, so a stray environment
-  variable cannot downgrade token verification.
-- **CSRF protection is absent on purpose.** Authentication is bearer-token only and no
-  cookies are set, so a cross-site request has nothing to ride on. Add CSRF protection if
-  you introduce cookie sessions.
-- **CORS is unconfigured**, which blocks cross-origin browser calls by default. If you
-  add `CORSMiddleware`, name the origins instead of using `*`.
-- **Set `HSTS_ENABLED=true` behind TLS.** It stays off by default so local HTTP works.
-- **Set `DOCS_ENABLED=false`** to withdraw `/docs`, `/redoc`, and `/openapi.json`.
-- **Reach the database over TLS** outside local development by appending `?ssl=require`
-  to `DATABASE_URL`, which asyncpg reads when it connects.
+Registration does reveal it, by answering 409 when an address is already taken. That is a
+deliberate trade for a usable signup form, and it is the one place the template leaks
+account existence. Closing it properly means answering 202 either way and sending a
+verification email, which needs a mail provider and a tokens table.
+
+Error responses never echo what was submitted. The validation handler keeps `type`, `loc`
+and `msg` and drops `input`, because FastAPI's default 422 body repeats the rejected
+value, which would put passwords in response bodies and access logs. Unexpected
+exceptions return a flat 500 and log the traceback server side, so stack traces and
+connection strings stay internal.
+
+Passwords run from 8 to 72 bytes. bcrypt refuses anything longer, so without the ceiling
+a long passphrase turns into an unhandled 500 on an unauthenticated route.
+
+`SECRET_KEY` must be at least 32 characters and cannot be the example value; the app
+refuses to start otherwise. `JWT_ALGORITHM` accepts only HS256, HS384 and HS512, so a
+stray environment variable cannot downgrade token verification.
+
+CSRF protection is absent deliberately. Authentication is bearer-token only and nothing
+sets a cookie, so a cross-site request has nothing to ride on. Add it if you introduce
+cookie sessions. CORS is unconfigured for the same reason it is safe to leave alone: with
+no origins allowed, browsers block cross-origin calls by default. If you add
+`CORSMiddleware`, name the origins instead of using `*`.
+
+Rate limits on the auth endpoints come from `LOGIN_RATE_LIMIT` and
+`REGISTER_RATE_LIMIT`. The default limiter counts in memory, so counts reset on restart
+and are per worker. Point slowapi at Redis before running more than one.
+
+Three settings to change before you deploy:
+
+- `HSTS_ENABLED=true`, once TLS terminates in front of the app. It ships off so local
+  HTTP works.
+- `DOCS_ENABLED=false`, to withdraw `/docs`, `/redoc` and `/openapi.json`.
+- `?ssl=require` appended to `DATABASE_URL`, which asyncpg reads when it connects.
 
 ## Roles and timestamps
 

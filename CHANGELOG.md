@@ -16,6 +16,10 @@ the template.
 - Make test database url optional
 - Stop leaking details in error responses
 
+### Documentation
+
+- Rewrite security notes in project voice
+
 ### Features
 
 - Add fastapi template
@@ -25,6 +29,7 @@ the template.
 - Harden headers, docs gating, rate limits
 - Add timestamps mixin and user roles
 - Soft delete users and items
+- Add rotating refresh tokens
 
 ### Miscellaneous
 
