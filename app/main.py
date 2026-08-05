@@ -1,11 +1,16 @@
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api.v1.router import api_router
 from app.core.exceptions import register_exception_handlers
-from app.db.session import dispose_engine
+from app.db.session import dispose_engine, get_engine
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -22,6 +27,19 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/health/ready")
+    async def readiness() -> JSONResponse:
+        try:
+            async with get_engine().connect() as connection:
+                await connection.execute(text("SELECT 1"))
+        except Exception:
+            logger.warning("Readiness probe failed", exc_info=True)
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"status": "not ready"},
+            )
+        return JSONResponse(status_code=status.HTTP_200_OK, content={"status": "ready"})
 
     return app
 
