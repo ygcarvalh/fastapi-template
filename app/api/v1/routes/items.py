@@ -2,14 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import CurrentUser, ItemServiceDep
+from app.api.deps import CurrentUser, ItemServiceDep, RequireAuth
 from app.schemas.item import ItemCreate, ItemRead, ItemUpdate
 from app.schemas.pagination import Page, PageParams
 
-router = APIRouter(prefix="/items", tags=["items"])
+private_router = APIRouter(prefix="/items", tags=["items"], dependencies=[RequireAuth])
 
 
-@router.get("")
+@private_router.get("")
 async def list_items(
     current_user: CurrentUser,
     service: ItemServiceDep,
@@ -26,7 +26,7 @@ async def list_items(
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@private_router.post("", status_code=status.HTTP_201_CREATED)
 async def create_item(
     data: ItemCreate, current_user: CurrentUser, service: ItemServiceDep
 ) -> ItemRead:
@@ -34,7 +34,7 @@ async def create_item(
     return ItemRead.model_validate(item)
 
 
-@router.get("/{item_id}")
+@private_router.get("/{item_id}")
 async def get_item(
     item_id: int, current_user: CurrentUser, service: ItemServiceDep
 ) -> ItemRead:
@@ -42,7 +42,7 @@ async def get_item(
     return ItemRead.model_validate(item)
 
 
-@router.patch("/{item_id}")
+@private_router.patch("/{item_id}")
 async def update_item(
     item_id: int,
     data: ItemUpdate,
@@ -53,7 +53,7 @@ async def update_item(
     return ItemRead.model_validate(item)
 
 
-@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@private_router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_item(
     item_id: int, current_user: CurrentUser, service: ItemServiceDep
 ) -> None:

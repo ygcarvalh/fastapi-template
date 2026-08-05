@@ -8,10 +8,10 @@ from app.repositories.user_repo import UserRepository
 from app.schemas.auth import Token
 from app.services.auth_service import AuthService
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+public_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/login")
+@public_router.post("/login")
 async def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     session: SessionDep,

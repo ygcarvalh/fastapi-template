@@ -48,3 +48,5 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+RequireAuth = Depends(get_current_user)

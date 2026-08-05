@@ -1,17 +1,18 @@
 from fastapi import APIRouter, status
 
-from app.api.deps import CurrentUser, UserServiceDep
+from app.api.deps import CurrentUser, RequireAuth, UserServiceDep
 from app.schemas.user import UserCreate, UserRead
 
-router = APIRouter(prefix="/users", tags=["users"])
+public_router = APIRouter(prefix="/users", tags=["users"])
+private_router = APIRouter(prefix="/users", tags=["users"], dependencies=[RequireAuth])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@public_router.post("", status_code=status.HTTP_201_CREATED)
 async def register_user(data: UserCreate, service: UserServiceDep) -> UserRead:
     user = await service.register(data)
     return UserRead.model_validate(user)
 
 
-@router.get("/me")
+@private_router.get("/me")
 async def read_me(current_user: CurrentUser) -> UserRead:
     return UserRead.model_validate(current_user)

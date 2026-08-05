@@ -28,15 +28,31 @@ Dependencies point inward. Services never import `app/repositories`; they depend
 `Protocol` interfaces they own in `app/services/protocols.py`, and the concrete
 repositories are wired in at the composition root (`app/api/deps.py`). Because mypy
 covers `tests` as well as `app`, a repository or a test fake that drifts from a
-protocol is a type error rather than a green test suite hiding a broken contract.
+protocol fails type checking.
 
 An example `Item` resource (owned by a `User`, JWT-protected) demonstrates the full
 slice end to end.
 
-Collection endpoints are paginated. `GET /api/v1/items` accepts `limit` (1–100,
+Collection endpoints are paginated. `GET /api/v1/items` accepts `limit` (1 to 100,
 default 20) and `offset`, and returns a `Page` envelope — `items`, `total`, `limit`,
 `offset` — from `app/schemas/pagination.py`. Reuse `PageParams` and `Page[T]` for new
 collections rather than returning a bare list, so no endpoint is an unbounded query.
+
+## Public and private routes
+
+Routes are private by default. Each routes module names its routers after their
+policy, and `app/api/v1/router.py` includes them in one place, so you can read the
+whole public surface there:
+
+- `public_router` — reachable without a token.
+- `private_router` — declared with `dependencies=[RequireAuth]`, so every route inside
+  it needs a valid bearer token whether or not the handler asks for `CurrentUser`.
+
+Add `current_user: CurrentUser` to a handler that needs the caller's identity. Leaving
+it out does not make the route public. `tests/integration/test_route_policy.py` reads
+the OpenAPI schema and fails when a route is neither protected nor named in
+`PUBLIC_OPERATIONS`, so forgetting to protect one breaks the build instead of leaking
+data.
 
 ## Requirements
 
