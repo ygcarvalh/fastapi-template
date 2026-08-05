@@ -54,19 +54,34 @@ the OpenAPI schema and fails when a route is neither protected nor named in
 `PUBLIC_OPERATIONS`, so forgetting to protect one breaks the build instead of leaking
 data.
 
-## Requirements
+## Quickstart with Docker
+
+Requires Docker with Compose. Generate a secret first, because the app refuses to
+start without one:
+
+```bash
+cp .env.example .env
+sed -i "s/^SECRET_KEY=.*/SECRET_KEY=$(openssl rand -hex 32)/" .env
+docker compose up --build
+```
+
+Compose starts PostgreSQL, waits for it to pass its healthcheck, applies migrations,
+and serves the API on http://127.0.0.1:8000. The test database is created alongside
+the main one by `scripts/create-test-database.sh`. Override `POSTGRES_PORT` or
+`API_PORT` if those ports are already taken on your machine.
+
+## Local setup without Docker
 
 - Python 3.13
 - [uv](https://docs.astral.sh/uv/)
 - A reachable PostgreSQL instance
-
-## Setup
 
 Install dependencies and create your environment file:
 
 ```bash
 uv sync
 cp .env.example .env          # then edit credentials
+sed -i "s/^SECRET_KEY=.*/SECRET_KEY=$(openssl rand -hex 32)/" .env
 ```
 
 Create the database role and databases (adjust names/password to taste, then keep
@@ -78,6 +93,10 @@ sudo -u postgres psql \
   -c "CREATE DATABASE fastapi_db OWNER fastapi_user;" \
   -c "CREATE DATABASE fastapi_db_test OWNER fastapi_user;"
 ```
+
+The role needs `CREATEDB` because the migration check in
+`tests/integration/test_migration_drift.py` provisions a throwaway database, applies
+every migration to it, and compares the result against the models.
 
 Apply migrations:
 
@@ -135,33 +154,58 @@ uv run alembic upgrade head
 uv run alembic downgrade -1
 ```
 
+Changing a model without generating a migration fails the suite. The check applies
+every migration to a fresh database and diffs the result against `Base.metadata`, so
+the two cannot drift apart silently.
+
+## Changelog
+
+`CHANGELOG.md` is generated from Conventional Commits, and CI fails when it is stale:
+
+```bash
+uv run git-cliff --output CHANGELOG.md
+```
+
+The file tracks changes to the template itself. Clear it when you start a project from
+this repository, since the history belongs to the template rather than your service.
+
 ## Quality tooling
 
 ```bash
 uv run pre-commit install     # enable hooks (once)
 uv run ruff check .           # lint
 uv run ruff format .          # format
-uv run mypy app               # type-check
+uv run mypy app tests         # type-check
+uv run pytest --cov           # tests with coverage (fails under 90%)
+uv run pip-audit              # known vulnerabilities in dependencies
 ```
+
+CI runs all of these on every push and pull request, against a real PostgreSQL
+service container.
 
 ## Project layout
 
 ```
 app/
-  main.py                 # app factory; routers + exception handlers
+  main.py                 # app factory; lifespan, routers, exception handlers
   core/                   # config, security, exceptions
-  db/                     # declarative base, async session
+  db/                     # declarative base, engine and session lifecycle
   api/
     deps.py               # shared dependencies (session, current user, services)
     v1/
-      router.py           # aggregates all v1 routers
+      router.py           # aggregates v1 routers, public ones first
       routes/             # auth, users, items
   models/                 # SQLAlchemy models
-  schemas/                # Pydantic schemas
+  schemas/                # Pydantic schemas, including pagination
   repositories/           # database access
   services/               # business logic
+    protocols.py          # repository interfaces the services depend on
 alembic/                  # migration environment + versions
+scripts/                  # database bootstrap used by compose
 tests/
-  unit/                   # logic with mocked repositories
+  unit/                   # logic against typed fakes
   integration/            # routes through the test database
+Dockerfile                # multi-stage build, non-root runtime
+compose.yaml              # PostgreSQL + API, migrations on start
+.github/workflows/ci.yml  # lint, types, tests, audit, changelog
 ```
