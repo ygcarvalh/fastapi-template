@@ -15,7 +15,36 @@ async def test_create_and_list_item(auth_client: AsyncClient) -> None:
 
     listing = await auth_client.get("/api/v1/items")
     assert listing.status_code == 200
-    assert [i["id"] for i in listing.json()] == [item["id"]]
+    assert [i["id"] for i in listing.json()["items"]] == [item["id"]]
+
+
+async def test_list_items_returns_a_page_envelope(auth_client: AsyncClient) -> None:
+    await auth_client.post("/api/v1/items", json={"title": "only"})
+
+    body = (await auth_client.get("/api/v1/items")).json()
+
+    assert body["total"] == 1
+    assert body["limit"] == 20
+    assert body["offset"] == 0
+    assert [item["title"] for item in body["items"]] == ["only"]
+
+
+async def test_list_items_honors_limit_and_offset(auth_client: AsyncClient) -> None:
+    for title in ("first", "second", "third"):
+        await auth_client.post("/api/v1/items", json={"title": title})
+
+    body = (await auth_client.get("/api/v1/items?limit=1&offset=1")).json()
+
+    assert body["total"] == 3
+    assert [item["title"] for item in body["items"]] == ["second"]
+
+
+async def test_list_items_rejects_a_limit_above_the_maximum(
+    auth_client: AsyncClient,
+) -> None:
+    response = await auth_client.get("/api/v1/items?limit=101")
+
+    assert response.status_code == 422
 
 
 async def test_update_item(auth_client: AsyncClient) -> None:

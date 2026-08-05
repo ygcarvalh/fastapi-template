@@ -55,4 +55,18 @@ async def test_delete_removes_the_item() -> None:
     await service.delete(1, OWNER_ID)
 
     assert [item.id for item in repo.deleted] == [1]
-    assert await repo.list_for_owner(OWNER_ID) == []
+    assert await repo.count_for_owner(OWNER_ID) == 0
+
+
+async def test_list_for_owner_reports_the_unpaginated_total() -> None:
+    items = []
+    for index in range(3):
+        item = Item(title=f"item-{index}", owner_id=OWNER_ID)
+        item.id = index + 1
+        items.append(item)
+    service = ItemService(FakeItemRepository(items))
+
+    page, total = await service.list_for_owner(OWNER_ID, limit=2, offset=0)
+
+    assert [item.id for item in page] == [1, 2]
+    assert total == 3

@@ -27,8 +27,14 @@ class FakeItemRepository:
         self._items: list[Item] = list(items)
         self.deleted: list[Item] = []
 
-    async def list_for_owner(self, owner_id: int) -> Sequence[Item]:
-        return [item for item in self._items if item.owner_id == owner_id]
+    async def list_for_owner(
+        self, owner_id: int, limit: int, offset: int
+    ) -> Sequence[Item]:
+        owned = [item for item in self._items if item.owner_id == owner_id]
+        return owned[offset : offset + limit]
+
+    async def count_for_owner(self, owner_id: int) -> int:
+        return sum(1 for item in self._items if item.owner_id == owner_id)
 
     async def get_for_owner(self, item_id: int, owner_id: int) -> Item | None:
         return next(

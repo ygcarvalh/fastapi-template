@@ -33,6 +33,11 @@ protocol is a type error rather than a green test suite hiding a broken contract
 An example `Item` resource (owned by a `User`, JWT-protected) demonstrates the full
 slice end to end.
 
+Collection endpoints are paginated. `GET /api/v1/items` accepts `limit` (1–100,
+default 20) and `offset`, and returns a `Page` envelope — `items`, `total`, `limit`,
+`offset` — from `app/schemas/pagination.py`. Reuse `PageParams` and `Page[T]` for new
+collections rather than returning a bare list, so no endpoint is an unbounded query.
+
 ## Requirements
 
 - Python 3.13

@@ -10,8 +10,12 @@ class ItemService:
     def __init__(self, repo: ItemRepositoryProtocol) -> None:
         self._repo = repo
 
-    async def list_for_owner(self, owner_id: int) -> Sequence[Item]:
-        return await self._repo.list_for_owner(owner_id)
+    async def list_for_owner(
+        self, owner_id: int, limit: int, offset: int
+    ) -> tuple[Sequence[Item], int]:
+        items = await self._repo.list_for_owner(owner_id, limit, offset)
+        total = await self._repo.count_for_owner(owner_id)
+        return items, total
 
     async def create(self, owner_id: int, data: ItemCreate) -> Item:
         item = Item(title=data.title, description=data.description, owner_id=owner_id)

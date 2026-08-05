@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item import Item
@@ -10,11 +10,23 @@ class ItemRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def list_for_owner(self, owner_id: int) -> Sequence[Item]:
+    async def list_for_owner(
+        self, owner_id: int, limit: int, offset: int
+    ) -> Sequence[Item]:
         result = await self._session.execute(
-            select(Item).where(Item.owner_id == owner_id).order_by(Item.id)
+            select(Item)
+            .where(Item.owner_id == owner_id)
+            .order_by(Item.id)
+            .limit(limit)
+            .offset(offset)
         )
         return result.scalars().all()
+
+    async def count_for_owner(self, owner_id: int) -> int:
+        result = await self._session.execute(
+            select(func.count()).select_from(Item).where(Item.owner_id == owner_id)
+        )
+        return result.scalar_one()
 
     async def get_for_owner(self, item_id: int, owner_id: int) -> Item | None:
         result = await self._session.execute(

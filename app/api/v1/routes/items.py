@@ -1,17 +1,29 @@
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
 
 from app.api.deps import CurrentUser, ItemServiceDep
 from app.schemas.item import ItemCreate, ItemRead, ItemUpdate
+from app.schemas.pagination import Page, PageParams
 
 router = APIRouter(prefix="/items", tags=["items"])
 
 
 @router.get("")
 async def list_items(
-    current_user: CurrentUser, service: ItemServiceDep
-) -> list[ItemRead]:
-    items = await service.list_for_owner(current_user.id)
-    return [ItemRead.model_validate(item) for item in items]
+    current_user: CurrentUser,
+    service: ItemServiceDep,
+    page: Annotated[PageParams, Query()],
+) -> Page[ItemRead]:
+    items, total = await service.list_for_owner(
+        current_user.id, page.limit, page.offset
+    )
+    return Page(
+        items=[ItemRead.model_validate(item) for item in items],
+        total=total,
+        limit=page.limit,
+        offset=page.offset,
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
