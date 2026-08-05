@@ -19,6 +19,7 @@ the template.
 ### Documentation
 
 - Rewrite security notes in project voice
+- Add badges and correct token wording
 
 ### Features
 

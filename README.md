@@ -1,5 +1,11 @@
 # FastAPI Backend Template
 
+[![CI](https://github.com/ygcarvalh/fastapi-template/actions/workflows/ci.yml/badge.svg)](https://github.com/ygcarvalh/fastapi-template/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.13-blue)](https://www.python.org/downloads/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![mypy](https://img.shields.io/badge/mypy-strict-blue)](https://mypy-lang.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A clone-and-launch starter for FastAPI backends: async SQLAlchemy 2.0 + PostgreSQL,
 Alembic migrations, JWT authentication, a layered (Router → Service → Repository)
 architecture, and a test-first setup.
@@ -17,7 +23,7 @@ Request → Router (HTTP) → Service (business logic) → Repository (DB) → P
 - `app/models` — SQLAlchemy ORM entities.
 - `app/schemas` — Pydantic request/response contracts.
 - `app/core` — config, security (JWT + password hashing), domain exceptions.
-- `app/db` — declarative base and async session factory.
+- `app/db` — declarative base, shared column mixins, engine and session lifecycle.
 
 The transaction boundary is the request: `get_session` commits on success and rolls
 back on error, so services and repositories only `flush`. Domain exceptions
@@ -120,20 +126,23 @@ New accounts are created as `user`; promote deliberately.
 ## Tokens
 
 `POST /api/v1/auth/login` returns a short-lived access token and a longer-lived refresh
-token. `POST /api/v1/auth/refresh` exchanges the refresh token for a fresh pair, so the
-old one stops being the only key to the account.
+token. `POST /api/v1/auth/refresh` exchanges the refresh token for a fresh pair.
 
 Both tokens carry a `typ` claim, and each decoder insists on its own value. Without that
 check a refresh token would work as a bearer token on any protected route, which hands
 back the long lifetime the short access expiry was meant to avoid. The template tests
 both directions of that confusion.
 
-Refresh tokens are stateless, which buys a refresh with no database write but means you
-cannot revoke one before it expires. `REFRESH_TOKEN_EXPIRE_DAYS` is therefore the window
-in which a stolen token stays useful, so keep it in days. Deactivating an account does
-end refreshing immediately, because `refresh` reloads the user and the repository filters
-soft-deleted rows. If you need real revocation, store the refresh tokens hashed with a
-`revoked_at` column and check them on refresh.
+Refresh tokens are stateless, which buys a refresh with no database write and costs you
+revocation. Two consequences worth being clear about. A refresh does not retire the token
+you traded in: with nothing stored, there is nothing to mark spent, so the previous
+refresh token keeps working until it expires. And a stolen refresh token stays useful for
+the whole of `REFRESH_TOKEN_EXPIRE_DAYS`, which is why the default is a week rather than
+a year.
+
+Deactivating an account does cut off refreshing straight away, because `refresh` reloads
+the user and the repository filters soft-deleted rows. For revocation of individual
+tokens, store them hashed with a `revoked_at` column and check that on refresh.
 
 ## Soft delete
 
@@ -219,15 +228,15 @@ Open http://127.0.0.1:8000/docs for the interactive API.
 
 ## Test-driven development
 
-The suite uses a real PostgreSQL test database (`TEST_DATABASE_URL`) with a per-test
-transaction that is rolled back — fast and fully isolated. The schema is created
-once per test session with `Base.metadata.create_all`; Alembic remains the source of
-truth for the real database.
+The suite runs against a real PostgreSQL test database (`TEST_DATABASE_URL`), wrapping
+each test in a transaction it rolls back afterwards, so tests stay isolated without
+rebuilding the schema between them. The schema is created once per session with
+`Base.metadata.create_all`; Alembic remains the source of truth for the real database.
 
 Red → green → refactor:
 
-1. Write a failing test under `tests/unit` (logic, mocked repository) or
-   `tests/integration` (routes through the test DB).
+1. Write a failing test under `tests/unit` (logic against the typed fakes in
+   `tests/unit/fakes.py`) or `tests/integration` (routes through the test DB).
 2. Run it and watch it fail.
 3. Write the minimal code to pass.
 4. Refactor with the test as a safety net.
