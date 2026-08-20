@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     login_rate_limit: str = "10/minute"
     register_rate_limit: str = "5/minute"
 
+    service_name: str = "fastapi-template"
+    log_level: str = "INFO"
+    log_format: Literal["json", "console"] = "json"
+    log_file: str | None = None
+    request_log_excluded_paths: str = "/health,/health/ready,/metrics"
+
     @field_validator("secret_key")
     @classmethod
     def reject_placeholder_secret_key(cls, value: str) -> str:

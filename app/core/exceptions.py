@@ -35,6 +35,12 @@ class ForbiddenError(DomainError):
 def register_exception_handlers(app: FastAPI) -> None:
     async def handle_domain_error(request: Request, exc: Exception) -> JSONResponse:
         err = cast(DomainError, exc)
+        logger.warning(
+            "Domain error serving %s %s with status %s",
+            request.method,
+            request.url.path,
+            err.status_code,
+        )
         return JSONResponse(status_code=err.status_code, content={"detail": err.detail})
 
     async def handle_validation_error(request: Request, exc: Exception) -> JSONResponse:
