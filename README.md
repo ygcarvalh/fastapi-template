@@ -48,6 +48,8 @@ Registration does reveal it, by answering 409 when an address is already taken. 
 
 Error responses never echo what was submitted. The validation handler keeps `type`, `loc` and `msg` and drops `input`, because FastAPI's default 422 body repeats the rejected value, which would put passwords in response bodies and access logs. Unexpected exceptions return a flat 500 and log the traceback server side, so stack traces and connection strings stay internal.
 
+Request logging follows the same rule. The access line records method, path, status, duration, client IP, correlation ID and the authenticated user id, and nothing else. No request body, no query values, no headers. There is no redaction list to maintain because nothing sensitive is captured in the first place.
+
 Passwords run from 8 to 72 bytes. bcrypt refuses anything longer, so without the ceiling a long passphrase turns into an unhandled 500 on an unauthenticated route.
 
 `SECRET_KEY` must be at least 32 characters and cannot be the example value; the app refuses to start otherwise. `JWT_ALGORITHM` accepts only HS256, HS384 and HS512, so a stray environment variable cannot downgrade token verification.
@@ -147,6 +149,37 @@ uv run fastapi dev app/main.py
 
 Open http://127.0.0.1:8000/docs for the interactive API.
 
+## Observability
+
+Every request carries a correlation ID, and every log line is one JSON object. Given an ID, you can read the whole request.
+
+The `X-Request-ID` header drives it. A caller that sends one keeps it, which is how a frontend stitches its own logs to the API's; a caller that sends nothing gets a fresh `uuid4().hex`. Either way the ID comes back on the response, so a browser can show it on an error screen. Inbound values are checked against `[A-Za-z0-9_-]{1,64}` and replaced when they fail, because a header is untrusted input and a newline in it would forge log lines.
+
+The ID lives in a `ContextVar`, so no logging call has to pass it around. A structlog processor copies it onto every event, including the ones uvicorn writes:
+
+```json
+{"method":"GET","path":"/api/v1/items","status_code":401,"duration_ms":4.116,"client_ip":"127.0.0.1","user_id":null,"event":"request","request_id":"verify-e2e-001","service":"fastapi-template","level":"info","logger":"app.request","timestamp":"2026-08-20T20:12:23.962813Z"}
+```
+
+`LOG_FORMAT=console` swaps the JSON for a readable stream while you work. `REQUEST_LOG_EXCLUDED_PATHS` keeps probes and scrapes out of the log; the defaults cover `/health`, `/health/ready` and `/metrics`.
+
+Prometheus metrics are served at `/metrics`, from `prometheus-fastapi-instrumentator`. Set `METRICS_ENABLED=false` to withdraw the route. The counters live in the process, so behind more than one worker each reports only its own share, the same caveat the in-memory rate limiter carries.
+
+### Searching the logs
+
+This template writes the logs and serves the metrics. Storing and searching them is somebody else's job, because a per-project Loki means a per-project Grafana and one query per service when you are chasing an ID across two of them.
+
+The companion `devstack` repository runs Loki, Grafana, Alloy and Prometheus once for every project on the machine. Two settings connect this app to it:
+
+```bash
+SERVICE_NAME=my-api                                   # unique per app; it is the filter
+LOG_FILE=$HOME/.local/state/devlogs/my-api.jsonl      # where Alloy looks
+```
+
+Then register the metrics endpoint by dropping one file into that repository's `prometheus/targets/`. Its README has the details.
+
+Without `devstack` everything still works: the JSON goes to stdout, and `docker compose logs api | jq 'select(.request_id == "…")'` answers the same question with more typing.
+
 ## Test-driven development
 
 The suite runs against a real PostgreSQL test database (`TEST_DATABASE_URL`), wrapping each test in a transaction it rolls back afterwards, so tests stay isolated without rebuilding the schema between them. The schema is created once per session with `Base.metadata.create_all`; Alembic remains the source of truth for the real database.
@@ -221,7 +254,7 @@ CI runs all of these on every push and pull request, against a real PostgreSQL s
 ```
 app/
   main.py                 # app factory; lifespan, routers, exception handlers
-  core/                   # config, security, exceptions
+  core/                   # config, security, exceptions, logging, observability
   db/                     # declarative base, engine and session lifecycle
   api/
     deps.py               # shared dependencies (session, current user, services)
