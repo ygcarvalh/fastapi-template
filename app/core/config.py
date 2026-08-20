@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: Literal["json", "console"] = "json"
     log_file: str | None = None
+    metrics_enabled: bool = True
     request_log_excluded_paths: str = "/health,/health/ready,/metrics"
 
     @field_validator("secret_key")

@@ -10,6 +10,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.metrics import register_metrics
 from app.core.middleware import register_security_headers
 from app.core.observability import (
     parse_excluded_paths,
@@ -49,6 +50,8 @@ def create_app() -> FastAPI:
         app,
         excluded_paths=parse_excluded_paths(settings.request_log_excluded_paths),
     )
+    if settings.metrics_enabled:
+        register_metrics(app)
     app.include_router(api_router, prefix="/api/v1")
 
     @app.get("/health")
