@@ -26,6 +26,12 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fastapi_user}:${POSTGRES_PASSWORD:-secret123}@db:5432/${POSTGRES_DB:-fastapi_db}
       SECRET_KEY: "${SECRET_KEY:?generate one with openssl rand -hex 32}"
+      SERVICE_NAME: ${SERVICE_NAME:-fastapi-template}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    # Lets the shared devstack read this container's stdout. Harmless without it.
+    labels:
+      devstack.service: ${SERVICE_NAME:-fastapi-template}
     ports:
       - "${API_PORT:-8000}:8000"
     command: >

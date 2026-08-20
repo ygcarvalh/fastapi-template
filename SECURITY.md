@@ -22,6 +22,10 @@ Access and refresh tokens both carry a `typ` claim, and each decoder in `app/cor
 
 Error responses never echo what was submitted. The validation handler in `app/core/exceptions.py` keeps `type`, `loc`, and `msg` and drops `input`, because FastAPI's default 422 body repeats the rejected value, which would put passwords into response bodies and access logs. Unexpected exceptions return a flat 500 and log the traceback server side, so stack traces and connection strings stay internal.
 
+An inbound `X-Request-ID` is filtered before it reaches a log line. `app/core/request_context.py` accepts at most 64 characters of `[A-Za-z0-9_-]` and mints a fresh id for anything else, because the header is caller-controlled and a newline in it would let that caller write forged entries into the log stream.
+
+Request logs record metadata only. The access line in `app/core/observability.py` carries method, path, status, duration, client IP, correlation id, and the authenticated user id. No request body, no query values, no headers. There is no redaction list to maintain because nothing sensitive is captured in the first place.
+
 Deactivation ends access immediately. Repositories filter `deleted_at IS NULL`, so a soft-deleted account cannot log in, its already issued access token stops working on the next request, and its refresh token stops working because `AuthService.refresh` reloads the user. The partial unique index `unique on (email) where deleted_at is null` still rejects two active accounts on one address while letting a deactivated address register again.
 
 CSRF protection is absent deliberately. Authentication is bearer-token only and nothing sets a cookie, so a cross-site request has nothing to ride on. CORS is unconfigured for the same reason it is safe to leave alone: with no origins allowed, browsers block cross-origin calls by default.

@@ -49,7 +49,7 @@ app/
   repositories/      # the only layer that queries the database
   models/            # SQLAlchemy entities
   schemas/           # Pydantic request and response contracts
-  core/              # config, security, exceptions, middleware, rate limiting
+  core/              # config, security, exceptions, middleware, rate limiting, logging
   db/                # declarative base, column mixins, engine and session
 ```
 

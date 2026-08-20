@@ -6,6 +6,7 @@ PUBLIC_OPERATIONS = {
     ("post", "/api/v1/users"),
     ("get", "/health"),
     ("get", "/health/ready"),
+    ("get", "/metrics"),
 }
 
 MINIMUM_DISCOVERED_OPERATIONS = 8

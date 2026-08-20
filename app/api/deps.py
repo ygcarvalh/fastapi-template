@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import Depends, params
+import structlog
+from fastapi import Depends, Request, params
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +34,7 @@ ItemServiceDep = Annotated[ItemService, Depends(get_item_service)]
 
 
 async def get_current_user(
+    request: Request,
     token: Annotated[str, Depends(oauth2_scheme)],
     service: UserServiceDep,
 ) -> User:
@@ -42,9 +44,12 @@ async def get_current_user(
     except ValueError as exc:
         raise AuthError("Invalid authentication credentials") from exc
     try:
-        return await service.get(user_id)
+        user = await service.get(user_id)
     except NotFoundError as exc:
         raise AuthError("Invalid authentication credentials") from exc
+    request.state.user_id = user.id
+    structlog.contextvars.bind_contextvars(user_id=user.id)
+    return user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

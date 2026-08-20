@@ -13,6 +13,8 @@ dependencies = [
     "pyjwt>=2.10",
     "pwdlib[bcrypt]>=0.3.0",
     "slowapi>=0.1.9",
+    "structlog>=25.4",
+    "prometheus-fastapi-instrumentator>=7.1",
 ]
 
 [dependency-groups]

@@ -9,7 +9,13 @@ from sqlalchemy import text
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
+from app.core.logging import configure_logging
+from app.core.metrics import register_metrics
 from app.core.middleware import register_security_headers
+from app.core.observability import (
+    parse_excluded_paths,
+    register_request_logging,
+)
 from app.core.rate_limit import register_rate_limiting
 from app.db.session import dispose_engine, get_engine
 
@@ -24,6 +30,12 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    configure_logging(
+        level=settings.log_level,
+        json_format=settings.log_format == "json",
+        service_name=settings.service_name,
+        log_file=settings.log_file,
+    )
     app = FastAPI(
         title="FastAPI Template",
         lifespan=lifespan,
@@ -34,6 +46,12 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     register_rate_limiting(app)
     register_security_headers(app, hsts_enabled=settings.hsts_enabled)
+    register_request_logging(
+        app,
+        excluded_paths=parse_excluded_paths(settings.request_log_excluded_paths),
+    )
+    if settings.metrics_enabled:
+        register_metrics(app)
     app.include_router(api_router, prefix="/api/v1")
 
     @app.get("/health")
