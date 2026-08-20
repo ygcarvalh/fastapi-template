@@ -149,6 +149,12 @@ uv run fastapi dev app/main.py
 
 Open http://127.0.0.1:8000/docs for the interactive API.
 
+That binds loopback only, which is right for development and wrong for a Prometheus running in a container: it reaches the host through the Docker gateway, a different interface, so the target shows as down while `curl` from your shell works perfectly. Bind every interface when you want the metrics scraped:
+
+```bash
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
 ## Observability
 
 Every request carries a correlation ID, and every log line is one JSON object. Given an ID, you can read the whole request.
@@ -177,6 +183,8 @@ LOG_FILE=$HOME/.local/state/devlogs/my-api.jsonl      # where Alloy looks
 ```
 
 Then register the metrics endpoint by dropping one file into that repository's `prometheus/targets/`. Its README has the details.
+
+Under compose the log file is unnecessary: the `api` service already carries a `devstack.service` label, which is how that stack decides whose container stdout to read.
 
 Without `devstack` everything still works: the JSON goes to stdout, and `docker compose logs api | jq 'select(.request_id == "…")'` answers the same question with more typing.
 
