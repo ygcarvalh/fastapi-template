@@ -5,7 +5,7 @@ description = "Scalable async FastAPI backend template"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.141.1",
-    "sqlalchemy[asyncio]>=2.0.51",
+    "sqlalchemy[asyncio]>=2.0.52",
     "asyncpg>=0.30",
     "alembic>=1.14",
     "pydantic-settings>=2.6",
