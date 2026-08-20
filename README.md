@@ -48,7 +48,7 @@ Registration does reveal it, by answering 409 when an address is already taken. 
 
 Error responses never echo what was submitted. The validation handler keeps `type`, `loc` and `msg` and drops `input`, because FastAPI's default 422 body repeats the rejected value, which would put passwords in response bodies and access logs. Unexpected exceptions return a flat 500 and log the traceback server side, so stack traces and connection strings stay internal.
 
-Request logging follows the same rule. The access line records method, path, status, duration, client IP, correlation ID and the authenticated user id, and nothing else. No request body, no query values, no headers. There is no redaction list to maintain because nothing sensitive is captured in the first place.
+Request logging follows the same rule. The access line records method, path, status, duration, client IP, correlation ID and the authenticated user id. It never records the body, the query values, or the headers, which is why the template ships no redaction list: nothing is captured that would need one.
 
 Passwords run from 8 to 72 bytes. bcrypt refuses anything longer, so without the ceiling a long passphrase turns into an unhandled 500 on an unauthenticated route.
 
@@ -157,7 +157,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## Observability
 
-Every request carries a correlation ID, and every log line is one JSON object. Given an ID, you can read the whole request.
+Every request carries a correlation ID, and every log line is one JSON object that includes it. Given an ID, you can reconstruct what happened to a request instead of reproducing it.
 
 The `X-Request-ID` header drives it. A caller that sends one keeps it, which is how a frontend stitches its own logs to the API's; a caller that sends nothing gets a fresh `uuid4().hex`. Either way the ID comes back on the response, so a browser can show it on an error screen. Inbound values are checked against `[A-Za-z0-9_-]{1,64}` and replaced when they fail, because a header is untrusted input and a newline in it would forge log lines.
 
@@ -173,7 +173,7 @@ Prometheus metrics are served at `/metrics`, from `prometheus-fastapi-instrument
 
 ### Searching the logs
 
-This template writes the logs and serves the metrics. Storing and searching them is somebody else's job, because a per-project Loki means a per-project Grafana and one query per service when you are chasing an ID across two of them.
+This template writes the logs and serves the metrics. Storing and searching them is somebody else's job, because one Loki per project also means one Grafana per project, and two queries every time an ID crosses a service boundary.
 
 The companion `devstack` repository runs Loki, Grafana, Alloy and Prometheus once for every project on the machine. Two settings connect this app to it:
 
