@@ -23,9 +23,9 @@ dev = [
     "pytest-asyncio>=0.26",
     "pytest-cov>=6.0",
     "httpx>=0.28",
-    "ruff>=0.16.1",
-    "mypy>=1.13",
-    "pre-commit>=4.6.1",
+    "ruff>=0.16.3",
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
     "git-cliff>=2.7",
     "pip-audit>=2.7",
 ]
