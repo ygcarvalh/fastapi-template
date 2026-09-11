@@ -9,6 +9,7 @@ from sqlalchemy import text
 from app.api.v1.router import api_router
 from app.core.body_limit import BodySizeLimitMiddleware
 from app.core.config import get_settings
+from app.core.cors import register_cors
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.metrics import register_metrics
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
         excluded_paths=parse_excluded_paths(settings.request_log_excluded_paths),
         recorder=store_request if settings.request_log_persist_enabled else None,
     )
+    register_cors(app, origins=settings.cors_origin_list)
     if settings.metrics_enabled:
         register_metrics(app)
     app.include_router(api_router, prefix="/api/v1", responses=COMMON_ERROR_RESPONSES)

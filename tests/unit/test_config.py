@@ -59,3 +59,31 @@ def test_rejects_a_body_limit_that_admits_nothing() -> None:
             secret_key=_STRONG_SECRET,
             max_request_body_bytes=0,
         )
+
+
+def test_cors_origins_are_split_and_trimmed() -> None:
+    settings = Settings(
+        database_url=_DATABASE_URL,
+        secret_key=_STRONG_SECRET,
+        cors_origins=" https://a.example.com, https://b.example.com ,",
+    )
+
+    assert settings.cors_origin_list == [
+        "https://a.example.com",
+        "https://b.example.com",
+    ]
+
+
+def test_cors_origins_default_to_none() -> None:
+    settings = Settings(database_url=_DATABASE_URL, secret_key=_STRONG_SECRET)
+
+    assert settings.cors_origin_list == []
+
+
+def test_a_wildcard_cors_origin_is_refused() -> None:
+    with pytest.raises(ValidationError, match="named origins"):
+        Settings(
+            database_url=_DATABASE_URL,
+            secret_key=_STRONG_SECRET,
+            cors_origins="https://a.example.com, *",
+        )

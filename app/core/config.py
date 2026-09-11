@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
 
     docs_enabled: bool = True
+    cors_origins: str = ""
     max_request_body_bytes: Annotated[int, Field(gt=0)] = 1024 * 1024
     hsts_enabled: bool = False
     login_rate_limit: str = "10/minute"
@@ -32,6 +33,22 @@ class Settings(BaseSettings):
     request_log_excluded_paths: str = "/health,/health/ready,/metrics"
     request_log_persist_enabled: bool = True
     feature_flags: str = "items,request-log"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [
+            origin.strip() for origin in self.cors_origins.split(",") if origin.strip()
+        ]
+
+    @field_validator("cors_origins")
+    @classmethod
+    def reject_wildcard_origin(cls, value: str) -> str:
+        if "*" in value:
+            raise ValueError(
+                "CORS_ORIGINS takes named origins only; '*' would let any site "
+                "call the API with a stolen token"
+            )
+        return value
 
     @field_validator("secret_key")
     @classmethod
