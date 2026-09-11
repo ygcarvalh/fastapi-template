@@ -13,6 +13,7 @@ async def test_responses_carry_hardening_headers() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["cache-control"] == "no-store"
 
 
 async def test_hsts_is_absent_by_default() -> None:
