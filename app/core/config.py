@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
 
     docs_enabled: bool = True
+    max_request_body_bytes: Annotated[int, Field(gt=0)] = 1024 * 1024
     hsts_enabled: bool = False
     login_rate_limit: str = "10/minute"
     register_rate_limit: str = "5/minute"

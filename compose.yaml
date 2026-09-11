@@ -33,6 +33,7 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       REQUEST_LOG_PERSIST_ENABLED: ${REQUEST_LOG_PERSIST_ENABLED:-true}
       FEATURE_FLAGS: ${FEATURE_FLAGS:-items,request-log}
+      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-1048576}
       # Which proxies uvicorn believes about X-Forwarded-For. Empty means
       # none, so a caller cannot pick its own IP for the rate limiter or the
       # request log. Set it to your reverse proxy's address in production.

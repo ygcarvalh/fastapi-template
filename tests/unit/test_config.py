@@ -50,3 +50,12 @@ def test_does_not_require_a_test_database_url(
     settings = Settings(database_url=_DATABASE_URL, secret_key=_STRONG_SECRET)
 
     assert settings.test_database_url is None
+
+
+def test_rejects_a_body_limit_that_admits_nothing() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url=_DATABASE_URL,
+            secret_key=_STRONG_SECRET,
+            max_request_body_bytes=0,
+        )

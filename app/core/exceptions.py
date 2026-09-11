@@ -41,6 +41,10 @@ class ForbiddenError(DomainError):
     status_code = 403
 
 
+class PayloadTooLargeError(DomainError):
+    status_code = 413
+
+
 def _correlation_id(request: Request | None) -> str | None:
     state = getattr(request, "state", None)
     from_state = getattr(state, "request_id", None) if state is not None else None
@@ -117,9 +121,13 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     # The 401 from the bearer scheme and the 404 for an unrouted path are
     # raised by the framework, and a client that has to special-case their
-    # shape has lost the point of one envelope.
+    # shape has lost the point of one envelope. FastAPI wraps anything raised
+    # while it reads the body in a 400, so a domain error underneath one is
+    # unwrapped and answered as itself.
     async def handle_http_error(request: Request, exc: Exception) -> JSONResponse:
         err = cast(StarletteHTTPException, exc)
+        if isinstance(err.__cause__, DomainError):
+            return await handle_domain_error(request, err.__cause__)
         detail = err.detail if isinstance(err.detail, str) else HTTP_ERROR_DETAIL
         return error_response(
             request,
