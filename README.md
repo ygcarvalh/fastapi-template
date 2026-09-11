@@ -65,15 +65,24 @@ Passwords run from 8 to 72 bytes. bcrypt refuses anything longer, so without the
 
 `SECRET_KEY` must be at least 32 characters and cannot be the example value; the app refuses to start otherwise. `JWT_ALGORITHM` accepts only HS256, HS384 and HS512, so a stray environment variable cannot downgrade token verification.
 
-CSRF protection is absent deliberately. Authentication is bearer-token only and nothing sets a cookie, so a cross-site request has nothing to ride on. Add it if you introduce cookie sessions. CORS is unconfigured for the same reason it is safe to leave alone: with no origins allowed, browsers block cross-origin calls by default. If you add `CORSMiddleware`, name the origins instead of using `*`.
+Addresses are stored in lowercase. `UserCreate` and `UserUpdate` normalize the email before it reaches a service, and login normalizes the submitted username the same way, so `Ada@Example.com` and `ada@example.com` are one account rather than two, and a reader who signs up with the shift key held down can still sign in without it. The migration `0a456e5b983c` lowercases what is already stored; it fails on the partial unique index if two active accounts differ only by case, which is the right outcome, because someone has to decide which one survives.
 
-Rate limits on the auth endpoints come from `LOGIN_RATE_LIMIT` and `REGISTER_RATE_LIMIT`. The default limiter counts in memory, so counts reset on restart and are per worker. Point slowapi at Redis before running more than one.
+Request bodies are bounded. `MAX_REQUEST_BODY_BYTES`, 1 MiB by default, is enforced in `app/core/body_limit.py`: a declared `Content-Length` above it answers 413 before the route runs, and a body that streams in without one is cut off where it passes the limit. Without that, a single anonymous `POST /api/v1/users` carrying a gigabyte would be read into memory before validation had anything to say about it.
 
-Three settings to change before you deploy:
+Every response carries `Cache-Control: no-store`. The API answers JSON that is either personal or a token, and no intermediary should keep a copy of either.
+
+CSRF protection is absent deliberately. Authentication is bearer-token only and nothing sets a cookie, so a cross-site request has nothing to ride on. Add it if you introduce cookie sessions. CORS is off by default for the same reason it is safe to leave alone: with no origins allowed, browsers block cross-origin calls. When the frontend lives on another origin, set `CORS_ORIGINS` to a comma-separated list of named origins, and `app/core/cors.py` adds `CORSMiddleware` with those origins, no credentials, and `X-Request-ID` in `Access-Control-Expose-Headers`, without which a browser never sees the correlation ID it is meant to show the reader. A `*` in the list refuses to start.
+
+Rate limits on the auth endpoints come from `LOGIN_RATE_LIMIT` and `REGISTER_RATE_LIMIT`; login, refresh, logout and password change share the first. The default limiter counts in memory, so counts reset on restart and are per worker. Point slowapi at Redis before running more than one.
+
+The limiter and the request log both key on the client address, and behind a reverse proxy that address is the proxy's unless uvicorn is told which proxies to believe. Compose starts uvicorn with `--proxy-headers` and passes `FORWARDED_ALLOW_IPS` through, empty by default: with nothing trusted, `X-Forwarded-For` is ignored, so a caller cannot choose its own address to escape the limit. Set it to the proxy's address in production.
+
+Four settings to change before you deploy:
 
 - `HSTS_ENABLED=true`, once TLS terminates in front of the app. It ships off so local HTTP works.
 - `DOCS_ENABLED=false`, to withdraw `/docs`, `/redoc` and `/openapi.json`.
 - `?ssl=require` appended to `DATABASE_URL`, which asyncpg reads when it connects.
+- `FORWARDED_ALLOW_IPS`, set to the reverse proxy's address, so rate limits and the request log see the caller rather than the proxy.
 
 ## Feature flags
 
@@ -149,7 +158,16 @@ sed -i "s/^SECRET_KEY=.*/SECRET_KEY=$(openssl rand -hex 32)/" .env
 docker compose up --build
 ```
 
-Compose starts PostgreSQL, waits for it to pass its healthcheck, applies migrations, and serves the API on http://127.0.0.1:8000. The test database is created alongside the main one by `scripts/create-test-database.sh`. Override `POSTGRES_PORT` or `API_PORT` if those ports are already taken on your machine.
+Compose starts PostgreSQL, waits for it to pass its healthcheck, applies migrations, and serves the API on http://127.0.0.1:8000. The test database is created alongside the main one by `scripts/create-test-database.sh`. Override `POSTGRES_PORT` or `API_PORT` if those ports are already taken on your machine. The database port is published on loopback only, because the default password is in this file.
+
+A `psql` against that database is one command away, and it needs nothing installed on the host:
+
+```bash
+docker compose run --rm psql
+docker compose run --rm psql -c 'select count(*) from users'
+```
+
+The `psql` service sits behind the `tools` profile, so `docker compose up` does not start it.
 
 ## Local setup without Docker
 
@@ -314,7 +332,7 @@ uv run pytest --cov           # tests with coverage (fails under 90%)
 uv run pip-audit              # known vulnerabilities in dependencies
 ```
 
-There is no CI workflow, so the hooks are the gate: `uv run pre-commit install --hook-type pre-commit --hook-type pre-push` puts ruff and mypy on every commit and the whole suite on every push. `scripts/check-commit-messages.sh` lints commit subjects when you want it to.
+There is no CI workflow, so the hooks are the gate: `uv run pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push` puts ruff and mypy on every commit, `scripts/check-commit-messages.sh` on every commit message, and the whole suite on every push, with `pip-audit` added to the push whenever `pyproject.toml` or `uv.lock` changed.
 
 `CONTRIBUTING.md` covers the workflow. `SECURITY.md` covers how to report a vulnerability and what to change before deploying.
 

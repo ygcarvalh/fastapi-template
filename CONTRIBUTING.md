@@ -25,19 +25,20 @@ uv run pip-audit
 There is no CI workflow, so those five commands are the whole gate — and the hooks are what stop you from forgetting them. Install them once:
 
 ```bash
-uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
 ```
 
-ruff and mypy run on commit; the suite runs on push, against the real test database. On push rather than on commit because it is too slow to pay for every commit and too important to leave to memory. Install the hooks once with `uv run pre-commit install` and ruff and mypy run on commit, which catches most of it earlier.
+ruff and mypy run on commit, `scripts/check-commit-messages.sh` checks the subject of every commit message, and the suite runs on push, against the real test database. `pip-audit` joins the push whenever `pyproject.toml` or `uv.lock` is part of it. The suite runs on push rather than on commit because it is too slow to pay for every commit and too important to leave to memory.
 
 The suite needs a reachable `TEST_DATABASE_URL`, and the role owning it needs `CREATEDB`, because `tests/integration/test_migration_drift.py` provisions a throwaway database, applies every migration, and diffs the result against `Base.metadata`.
 
 ## Commits
 
-Conventional Commits, header only, imperative mood, no trailing period. Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`. Put the reasoning in the pull request instead of the commit body. Keep 50 characters or fewer by hand. `scripts/check-commit-messages.sh` checks the type prefix rather than the length, so Dependabot's longer subjects still pass.
+Conventional Commits, header only, imperative mood, no trailing period. Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`. Put the reasoning in the pull request instead of the commit body. Keep 50 characters or fewer by hand. `scripts/check-commit-messages.sh` checks the type prefix rather than the length, so Dependabot's longer subjects still pass. The `commit-msg` hook runs it on the message you are writing; given a range it checks history instead.
 
 ```bash
 scripts/check-commit-messages.sh          # defaults to origin/main..HEAD
+scripts/check-commit-messages.sh .git/COMMIT_EDITMSG
 ```
 
 Pull requests are squash merged, so the squashed subject is what lands on `main` and what the changelog is generated from. Make it describe the change as a whole rather than leaving GitHub's default.
