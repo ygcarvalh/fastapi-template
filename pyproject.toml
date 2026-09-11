@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-template"
-version = "0.2.1"
+version = "1.0.0"
 description = "Scalable async FastAPI backend template"
 requires-python = ">=3.13"
 dependencies = [
