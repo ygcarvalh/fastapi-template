@@ -39,6 +39,15 @@ async def test_update_applies_only_provided_fields() -> None:
     assert result.description == "old-desc"
 
 
+async def test_update_writes_the_item_back_so_the_row_is_refreshed() -> None:
+    repo = FakeItemRepository([_owned_item()])
+    service = ItemService(repo)
+
+    result = await service.update(1, OWNER_ID, ItemUpdate(title="new"))
+
+    assert repo.saved == [result]
+
+
 async def test_update_clears_description_when_explicitly_null() -> None:
     service = ItemService(FakeItemRepository([_owned_item()]))
 

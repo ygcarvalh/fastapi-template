@@ -47,6 +47,7 @@ class FakeItemRepository:
     def __init__(self, items: Sequence[Item] = ()) -> None:
         self._items: list[Item] = list(items)
         self.deleted: list[Item] = []
+        self.saved: list[Item] = []
 
     async def list_for_owner(
         self, owner_id: int, limit: int, offset: int
@@ -70,6 +71,10 @@ class FakeItemRepository:
     async def create(self, item: Item) -> Item:
         item.id = len(self._items) + 1
         self._items.append(item)
+        return item
+
+    async def save(self, item: Item) -> Item:
+        self.saved.append(item)
         return item
 
     async def soft_delete(self, item: Item) -> None:

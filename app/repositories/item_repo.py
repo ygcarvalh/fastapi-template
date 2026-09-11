@@ -44,6 +44,11 @@ class ItemRepository:
         await self._session.refresh(item)
         return item
 
+    async def save(self, item: Item) -> Item:
+        await self._session.flush()
+        await self._session.refresh(item)
+        return item
+
     async def soft_delete(self, item: Item) -> None:
         item.mark_deleted()
         await self._session.flush()
