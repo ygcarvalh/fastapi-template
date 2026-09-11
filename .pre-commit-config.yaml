@@ -13,6 +13,11 @@ repos:
         language: system
         types_or: [python, pyi]
         require_serial: true
+      - id: commit-message
+        name: conventional commit subject
+        entry: scripts/check-commit-messages.sh
+        language: script
+        stages: [commit-msg]
       - id: mypy
         name: mypy
         entry: uv run mypy app tests
@@ -27,5 +32,14 @@ repos:
         entry: uv run pytest -q
         language: system
         types: [python]
+        pass_filenames: false
+        stages: [pre-push]
+      # Runs when the locked dependency set changes, so a bump that pulls in
+      # an advisory is refused at the push rather than found at the release.
+      - id: pip-audit
+        name: pip-audit
+        entry: uv run pip-audit
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
         pass_filenames: false
         stages: [pre-push]
