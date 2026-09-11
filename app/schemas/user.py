@@ -86,6 +86,10 @@ class PasswordChange(BaseModel):
         return self
 
 
+class AccountDeactivate(BaseModel):
+    password: str
+
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

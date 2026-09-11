@@ -97,8 +97,10 @@ async def test_a_deactivated_account_cannot_refresh(
 ) -> None:
     await user_factory(email=EMAIL, password=PASSWORD)
     tokens = await _login(client)
-    await client.delete(
+    await client.request(
+        "DELETE",
         "/api/v1/users/me",
+        json={"password": PASSWORD},
         headers={"Authorization": f"Bearer {tokens['access_token']}"},
     )
 

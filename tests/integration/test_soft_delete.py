@@ -56,8 +56,31 @@ async def test_deactivating_an_account_invalidates_its_token(
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    assert (await client.delete("/api/v1/users/me", headers=headers)).status_code == 204
+    response = await client.request(
+        "DELETE", "/api/v1/users/me", json={"password": PASSWORD}, headers=headers
+    )
+    assert response.status_code == 204
     assert (await client.get("/api/v1/users/me", headers=headers)).status_code == 401
+
+
+async def test_deactivating_with_the_wrong_password_is_refused(
+    client: AsyncClient, user_factory: Callable[..., Awaitable[dict[str, object]]]
+) -> None:
+    await user_factory(email=RETIRED_EMAIL, password=PASSWORD)
+    login = await client.post(
+        "/api/v1/auth/login", data={"username": RETIRED_EMAIL, "password": PASSWORD}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = await client.request(
+        "DELETE",
+        "/api/v1/users/me",
+        json={"password": "wrong-password"},
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert (await client.get("/api/v1/users/me", headers=headers)).status_code == 200
 
 
 async def test_deactivated_accounts_cannot_log_in(
@@ -68,7 +91,9 @@ async def test_deactivated_accounts_cannot_log_in(
         "/api/v1/auth/login", data={"username": RETIRED_EMAIL, "password": PASSWORD}
     )
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    await client.delete("/api/v1/users/me", headers=headers)
+    await client.request(
+        "DELETE", "/api/v1/users/me", json={"password": PASSWORD}, headers=headers
+    )
 
     assert await _login(client, RETIRED_EMAIL, PASSWORD) == 401
 
@@ -81,7 +106,9 @@ async def test_a_deactivated_address_can_register_again(
         "/api/v1/auth/login", data={"username": RETIRED_EMAIL, "password": PASSWORD}
     )
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    await client.delete("/api/v1/users/me", headers=headers)
+    await client.request(
+        "DELETE", "/api/v1/users/me", json={"password": PASSWORD}, headers=headers
+    )
 
     again = await client.post(
         "/api/v1/users", json={"email": RETIRED_EMAIL, "password": PASSWORD}
@@ -105,7 +132,9 @@ async def test_deactivating_an_account_also_retires_its_items(
     )
     item_id = created.json()["id"]
 
-    await client.delete("/api/v1/users/me", headers=headers)
+    await client.request(
+        "DELETE", "/api/v1/users/me", json={"password": PASSWORD}, headers=headers
+    )
 
     stored = await db_session.execute(select(Item).where(Item.id == item_id))
     assert stored.scalar_one().deleted_at is not None
@@ -122,7 +151,9 @@ async def test_the_user_row_survives_deactivation(
     )
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-    await client.delete("/api/v1/users/me", headers=headers)
+    await client.request(
+        "DELETE", "/api/v1/users/me", json={"password": PASSWORD}, headers=headers
+    )
 
     stored = await db_session.execute(
         select(User).where(User.email == RETIRED_EMAIL).order_by(User.id)

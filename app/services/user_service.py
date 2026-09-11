@@ -2,8 +2,8 @@ from collections.abc import Sequence
 
 from sqlalchemy.exc import IntegrityError
 
-from app.core.exceptions import ConflictError, NotFoundError
-from app.core.security import hash_password
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.protocols import ItemRepositoryProtocol, UserRepositoryProtocol
@@ -67,6 +67,8 @@ class UserService:
 
     # What the account owns goes with it, so a deactivated address that
     # registers again starts empty.
-    async def deactivate(self, user: User) -> None:
+    async def deactivate(self, user: User, password: str) -> None:
+        if not verify_password(password, user.hashed_password):
+            raise ForbiddenError("Password is incorrect")
         await self._items.soft_delete_for_owner(user.id)
         await self._repo.soft_delete(user)

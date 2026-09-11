@@ -15,7 +15,7 @@ from app.models.user import UserRole
 from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import Page, PageParams
 from app.schemas.preferences import PreferencesRead, PreferencesUpdate
-from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.schemas.user import AccountDeactivate, UserCreate, UserRead, UserUpdate
 
 public_router = APIRouter(prefix="/users", tags=["users"])
 private_router = APIRouter(
@@ -63,8 +63,10 @@ async def update_my_preferences(
 
 
 @private_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-async def deactivate_me(current_user: CurrentUser, service: UserServiceDep) -> None:
-    await service.deactivate(current_user)
+async def deactivate_me(
+    data: AccountDeactivate, current_user: CurrentUser, service: UserServiceDep
+) -> None:
+    await service.deactivate(current_user, data.password)
 
 
 @private_router.get("", dependencies=[require_role(UserRole.ADMIN)])

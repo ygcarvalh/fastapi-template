@@ -1,7 +1,8 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.security import hash_password
 from app.models.item import Item
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
@@ -97,7 +98,7 @@ async def test_any_other_constraint_failure_is_still_a_crash() -> None:
 
 
 async def test_deactivating_an_account_takes_its_items_with_it() -> None:
-    user = User(email="leaving@example.com", hashed_password="x")
+    user = User(email="leaving@example.com", hashed_password=hash_password("secret123"))
     user.id = 3
     items = FakeItemRepository(
         [Item(title="mine", owner_id=3), Item(title="theirs", owner_id=4)]
@@ -105,8 +106,22 @@ async def test_deactivating_an_account_takes_its_items_with_it() -> None:
     users = FakeUserRepository([user])
     service = UserService(users, items)
 
-    await service.deactivate(user)
+    await service.deactivate(user, "secret123")
 
     assert users.deactivated == [user]
     assert [item.title for item in items.deleted] == ["mine"]
     assert await items.count_for_owner(4) == 1
+
+
+async def test_deactivating_with_the_wrong_password_is_refused() -> None:
+    user = User(email="leaving@example.com", hashed_password=hash_password("secret123"))
+    user.id = 3
+    items = FakeItemRepository([Item(title="mine", owner_id=3)])
+    users = FakeUserRepository([user])
+    service = UserService(users, items)
+
+    with pytest.raises(ForbiddenError):
+        await service.deactivate(user, "wrong-password")
+
+    assert users.deactivated == []
+    assert items.deleted == []
