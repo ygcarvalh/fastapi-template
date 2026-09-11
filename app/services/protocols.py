@@ -10,11 +10,9 @@ from app.models.user_preferences import UserPreferences
 from app.schemas.request_log import RequestLogQuery
 
 
-class SupportsFindUserByEmail(Protocol):
+class UserRepositoryProtocol(Protocol):
     async def get_by_email(self, email: str) -> User | None: ...
 
-
-class UserRepositoryProtocol(SupportsFindUserByEmail, Protocol):
     async def get(self, user_id: int) -> User | None: ...
 
     async def create(self, user: User) -> User: ...
