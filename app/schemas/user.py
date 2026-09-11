@@ -22,6 +22,10 @@ Password = Annotated[
 Name = Annotated[str, Field(max_length=NAME_MAX_LENGTH)]
 
 
+def normalize_email(value: str) -> str:
+    return value.strip().lower()
+
+
 def reject_password_exceeding_bcrypt_input_limit(value: str) -> str:
     if len(value.encode()) > BCRYPT_MAX_PASSWORD_BYTES:
         raise ValueError(f"password must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes")
@@ -32,6 +36,11 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: Password
     name: Name | None = None
+
+    @field_validator("email", mode="after")
+    @classmethod
+    def lowercase_email(cls, value: str) -> str:
+        return normalize_email(value)
 
     @field_validator("password")
     @classmethod
@@ -48,7 +57,7 @@ class UserUpdate(BaseModel):
     def reject_explicitly_null_email(cls, value: str | None) -> str | None:
         if value is None:
             raise ValueError("email cannot be null")
-        return value
+        return normalize_email(value)
 
     @field_validator("name")
     @classmethod

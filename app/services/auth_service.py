@@ -15,6 +15,7 @@ from app.core.security import (
 )
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.schemas.user import normalize_email
 from app.services.protocols import (
     RefreshTokenRepositoryProtocol,
     UserRepositoryProtocol,
@@ -39,7 +40,7 @@ class AuthService:
         self._tokens = tokens
 
     async def authenticate(self, email: str, password: str) -> TokenPair:
-        user = await self._users.get_by_email(email)
+        user = await self._users.get_by_email(normalize_email(email))
         hashed = user.hashed_password if user is not None else _hash_for_absent_user()
         password_matches = verify_password(password, hashed)
         if user is None or not password_matches:
