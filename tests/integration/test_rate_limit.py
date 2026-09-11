@@ -6,7 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.rate_limit import (
+from app.core.http.rate_limit import (
     RATE_LIMIT_DETAIL,
     RATE_LIMIT_MESSAGE,
     reset_rate_limits,

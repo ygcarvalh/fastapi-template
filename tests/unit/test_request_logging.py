@@ -1,7 +1,7 @@
 from starlette.background import BackgroundTask, BackgroundTasks
 from starlette.responses import Response
 
-from app.core.observability import _after_response
+from app.core.observability.request_logging import _after_response
 
 
 def _noop() -> None: ...

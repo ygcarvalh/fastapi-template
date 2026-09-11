@@ -1,7 +1,8 @@
 from fastapi import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.core.exceptions import PayloadTooLargeError, error_response
+from app.core.exceptions import PayloadTooLargeError
+from app.core.http.errors import error_response
 
 BODY_TOO_LARGE_DETAIL = "Request body too large"
 CONTENT_LENGTH_HEADER = b"content-length"

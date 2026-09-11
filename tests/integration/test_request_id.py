@@ -1,6 +1,9 @@
 from httpx import AsyncClient
 
-from app.core.request_context import MAX_REQUEST_ID_LENGTH, REQUEST_ID_HEADER
+from app.core.observability.request_context import (
+    MAX_REQUEST_ID_LENGTH,
+    REQUEST_ID_HEADER,
+)
 
 HEADER = REQUEST_ID_HEADER.lower()
 

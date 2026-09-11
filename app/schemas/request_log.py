@@ -13,7 +13,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.core.request_context import REQUEST_ID_REGEX
+from app.core.observability.request_context import REQUEST_ID_REGEX
 from app.models.request_log import PATH_LENGTH
 
 Outcome = Literal["success", "warning", "error"]

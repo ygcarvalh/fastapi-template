@@ -7,9 +7,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.core.observability import parse_excluded_paths, register_request_logging
-from app.core.request_context import REQUEST_ID_HEADER
-from app.core.request_recorder import store_request
+from app.api.request_recorder import store_request
+from app.core.observability.request_context import REQUEST_ID_HEADER
+from app.core.observability.request_logging import (
+    parse_excluded_paths,
+    register_request_logging,
+)
 from app.models.request_log import RequestLog
 from app.schemas.request_log import RequestRecord
 
@@ -19,9 +22,7 @@ async def recorded(
     engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncGenerator[async_sessionmaker[AsyncSession]]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    monkeypatch.setattr(
-        "app.core.request_recorder.get_session_factory", lambda: factory
-    )
+    monkeypatch.setattr("app.api.request_recorder.get_session_factory", lambda: factory)
     yield factory
     async with factory() as session:
         for entry in (await session.execute(select(RequestLog))).scalars().all():

@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 import structlog
 
-from app.core.logging import configure_logging
-from app.core.request_context import set_request_id
+from app.core.observability.logging import configure_logging
+from app.core.observability.request_context import set_request_id
 
 
 @pytest.fixture(autouse=True)

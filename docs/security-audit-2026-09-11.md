@@ -18,7 +18,7 @@ A pass over the template before the 1.0.0 tag, done alongside the same pass on `
 
 | Severity | Finding | Resolution |
 | --- | --- | --- |
-| Medium | No bound on the request body. An anonymous `POST /api/v1/users` carrying an enormous body was read into memory before validation ran. | `MAX_REQUEST_BODY_BYTES`, 1 MiB by default, enforced in `app/core/body_limit.py`. A declared length above it answers 413 before the route; a streamed body is cut off where it passes the limit. |
+| Medium | No bound on the request body. An anonymous `POST /api/v1/users` carrying an enormous body was read into memory before validation ran. | `MAX_REQUEST_BODY_BYTES`, 1 MiB by default, enforced in `app/core/http/body_limit.py`. A declared length above it answers 413 before the route; a streamed body is cut off where it passes the limit. |
 | Medium | Email addresses were compared as sent. `Ada@Example.com` and `ada@example.com` registered two accounts, and login demanded the exact case used at signup. | Lowercased in `UserCreate`, `UserUpdate` and `AuthService.authenticate`. Migration `0a456e5b983c` lowercases stored rows and fails where two active accounts collide, so a human decides which survives. |
 | Medium | The rate limiter and the request log keyed on `request.client.host`. Behind a reverse proxy every caller shared the proxy's address, and turning on proxy headers without naming the proxy would have let a caller pick its own. | Compose starts uvicorn with `--proxy-headers` and passes `FORWARDED_ALLOW_IPS` through, empty by default, so `X-Forwarded-For` is ignored until a proxy is named. Documented in the pre-deploy checklist. |
 | Low | `POST /api/v1/auth/logout` was public and unthrottled: an unauthenticated database write at the caller's pace. | Shares `LOGIN_RATE_LIMIT` with login, refresh and password change. |
@@ -31,6 +31,16 @@ A pass over the template before the 1.0.0 tag, done alongside the same pass on `
 ## Parity with the frontend siblings
 
 `angular-template` gates commits with commitlint on a `commit-msg` hook and runs its audit by hand. This repository had `scripts/check-commit-messages.sh` but nothing ran it. The script now accepts a message file as well as a range, `.pre-commit-config.yaml` runs it at `commit-msg`, and `pip-audit` runs at push whenever the lock changed.
+
+## Architecture pass
+
+A read of every module after the findings above, recorded here because the fixes changed the layout.
+
+- `PATCH /items/{id}` answered with the `updated_at` the row had before the write, because `ItemService.update` mutated the object and let the request commit later. It now writes the item back through the repository, which flushes and refreshes, the way `UserService.update` already did.
+- `DELETE /users/me` and `POST /auth/password` each called two services from the route. Deactivation now lives in `UserService.deactivate` and the password change in `AuthService.change_password`, so the rule that items go with the account and refresh tokens go with the password has one home.
+- `app/core/request_recorder.py` imported repositories and services from inside `core`. It moved to `app/api/request_recorder.py`, next to the composition root, and the middleware keeps only the `RequestRecorder` callable type.
+- `app/core` had grown to thirteen flat modules. The middleware stack is now `app/core/http` and logging, correlation IDs, the access log and metrics are `app/core/observability`; domain exceptions stayed in `app/core/exceptions.py`, with the HTTP handlers split out to `app/core/http/errors.py`.
+- `SupportsFindUserByEmail` in `protocols.py` had no user besides `UserRepositoryProtocol` and was folded into it.
 
 ## Standing debt
 

@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import AuthServiceDep, CurrentUser, RequireAuth
 from app.core.config import get_settings
-from app.core.rate_limit import limiter
+from app.core.http.rate_limit import limiter
 from app.schemas.auth import RefreshRequest, Token
 from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.user import PasswordChange

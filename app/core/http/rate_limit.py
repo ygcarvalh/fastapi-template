@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
-from app.core.exceptions import error_response
+from app.core.http.errors import error_response
 
 RATE_LIMIT_DETAIL = "Too many requests"
 RATE_LIMIT_MESSAGE = "Too many requests. Try again shortly."

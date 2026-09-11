@@ -6,20 +6,20 @@ from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.api.request_recorder import store_request
 from app.api.v1.router import api_router
-from app.core.body_limit import BodySizeLimitMiddleware
 from app.core.config import get_settings
-from app.core.cors import register_cors
-from app.core.exceptions import register_exception_handlers
-from app.core.logging import configure_logging
-from app.core.metrics import register_metrics
-from app.core.middleware import register_security_headers
-from app.core.observability import (
+from app.core.http.body_limit import BodySizeLimitMiddleware
+from app.core.http.cors import register_cors
+from app.core.http.errors import register_exception_handlers
+from app.core.http.headers import register_security_headers
+from app.core.http.rate_limit import register_rate_limiting
+from app.core.observability.logging import configure_logging
+from app.core.observability.metrics import register_metrics
+from app.core.observability.request_logging import (
     parse_excluded_paths,
     register_request_logging,
 )
-from app.core.rate_limit import register_rate_limiting
-from app.core.request_recorder import store_request
 from app.db.session import dispose_engine, get_engine
 from app.schemas.error import COMMON_ERROR_RESPONSES
 

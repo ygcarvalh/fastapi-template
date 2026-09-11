@@ -56,15 +56,21 @@ app/
   repositories/      # the only layer that queries the database
   models/            # SQLAlchemy entities
   schemas/           # Pydantic request and response contracts
-  core/              # config, security, exceptions, middleware, rate limiting, logging
+  core/              # config, security, domain exceptions, feature flags
+  core/http/         # error envelope, security headers, CORS, body limit, rate limiting
+  core/observability/  # logging, correlation ids, access log, metrics
   db/                # declarative base, column mixins, engine and session
 ```
 
-Two rules hold this together.
+Three rules hold this together.
 
 Services never import `app/repositories`. They depend on `Protocol` interfaces they own in `app/services/protocols.py`, and the concrete repositories are wired in at `app/api/deps.py`. Because mypy covers `tests` as well as `app`, a repository or a test fake that drifts from a protocol fails type checking rather than a test.
 
 The transaction boundary is the request. `get_session` commits on success and rolls back on error, so services and repositories only `flush`. A service that commits on its own breaks the guarantee that a failed request leaves nothing behind.
+
+`app/core` imports nothing from the layers outside it. Anything that needs a repository or a service to do its job is wiring, and wiring lives next to the composition root: `app/api/request_recorder.py` is the example, handed to the access-log middleware as a callable so the middleware never learns where rows go.
+
+Routes call one use case each. `DELETE /users/me` calls `UserService.deactivate`, which soft-deletes the account's items and then the account; `POST /auth/password` calls `AuthService.change_password`, which re-verifies, rehashes and revokes every refresh token. A rule that two steps belong together is a service's rule, so a second caller cannot forget half of it.
 
 Adding a resource means copying the `Item` slice across those layers and including the new router in `app/api/v1/router.py`. Routers are private by default; see the README on the public and private split before adding a `public_router` route.
 

@@ -1,6 +1,6 @@
 import logging
 
-from app.core.request_context import (
+from app.core.observability.request_context import (
     MAX_REQUEST_ID_LENGTH,
     add_request_id,
     get_request_id,

@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 
-from app.core.request_context import add_request_id
+from app.core.observability.request_context import add_request_id
 
 LOG_FILE_MAX_BYTES = 10 * 1024 * 1024
 LOG_FILE_BACKUP_COUNT = 3

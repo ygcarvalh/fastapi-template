@@ -5,11 +5,11 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel, Field
 
-from app.core.exceptions import (
+from app.core.exceptions import NotFoundError
+from app.core.http.errors import (
     UNEXPECTED_DETAIL,
     UNEXPECTED_MESSAGE,
     VALIDATION_MESSAGE,
-    NotFoundError,
     register_exception_handlers,
 )
 

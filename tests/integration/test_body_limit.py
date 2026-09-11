@@ -4,8 +4,8 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app.core.body_limit import BODY_TOO_LARGE_DETAIL
 from app.core.config import get_settings
+from app.core.http.body_limit import BODY_TOO_LARGE_DETAIL
 from app.main import create_app
 
 LIMIT = 64

@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import UNEXPECTED_DETAIL, UNEXPECTED_MESSAGE
-from app.core.request_context import REQUEST_ID_HEADER
+from app.core.http.errors import UNEXPECTED_DETAIL, UNEXPECTED_MESSAGE
+from app.core.observability.request_context import REQUEST_ID_HEADER
 from app.db.session import get_session
 from app.main import create_app
 

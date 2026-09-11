@@ -10,8 +10,8 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from structlog.testing import capture_logs
 
-from app.core.logging import configure_logging
-from app.core.request_context import REQUEST_ID_HEADER
+from app.core.observability.logging import configure_logging
+from app.core.observability.request_context import REQUEST_ID_HEADER
 from app.main import create_app
 
 

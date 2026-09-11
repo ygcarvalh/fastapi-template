@@ -4,7 +4,7 @@ from fastapi import APIRouter, Path, Query
 
 from app.api.deps import CurrentUser, RequestLogServiceDep, RequireAuth
 from app.core.features import Feature, require_feature
-from app.core.request_context import REQUEST_ID_REGEX
+from app.core.observability.request_context import REQUEST_ID_REGEX
 from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import CursorPage
 from app.schemas.request_log import RequestLogQuery, RequestLogRead

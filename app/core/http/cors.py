@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.request_context import REQUEST_ID_HEADER
+from app.core.observability.request_context import REQUEST_ID_HEADER
 
 
 # Outermost, so a 401 or a 429 reaches the browser with its headers too.

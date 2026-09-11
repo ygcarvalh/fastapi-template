@@ -19,7 +19,9 @@ Request → Router (HTTP) → Service (business logic) → Repository (DB) → P
 - `app/repositories` — the only layer that queries the database.
 - `app/models` — SQLAlchemy ORM entities.
 - `app/schemas` — Pydantic request/response contracts.
-- `app/core` — config, security (JWT + password hashing), domain exceptions.
+- `app/core` — config, security (JWT + password hashing), domain exceptions, feature flags.
+- `app/core/http` — the middleware stack: error envelope, security headers, CORS, body limit, rate limiting.
+- `app/core/observability` — structured logging, correlation IDs, the access log, Prometheus metrics.
 - `app/db` — declarative base, shared column mixins, engine and session lifecycle.
 
 The transaction boundary is the request: `get_session` commits on success and rolls back on error, so services and repositories only `flush`. Domain exceptions (`NotFoundError`, `ConflictError`, `AuthError`) are mapped to HTTP responses by handlers registered in `app/main.py`.
@@ -67,11 +69,11 @@ Passwords run from 8 to 72 bytes. bcrypt refuses anything longer, so without the
 
 Addresses are stored in lowercase. `UserCreate` and `UserUpdate` normalize the email before it reaches a service, and login normalizes the submitted username the same way, so `Ada@Example.com` and `ada@example.com` are one account rather than two, and a reader who signs up with the shift key held down can still sign in without it. The migration `0a456e5b983c` lowercases what is already stored; it fails on the partial unique index if two active accounts differ only by case, which is the right outcome, because someone has to decide which one survives.
 
-Request bodies are bounded. `MAX_REQUEST_BODY_BYTES`, 1 MiB by default, is enforced in `app/core/body_limit.py`: a declared `Content-Length` above it answers 413 before the route runs, and a body that streams in without one is cut off where it passes the limit. Without that, a single anonymous `POST /api/v1/users` carrying a gigabyte would be read into memory before validation had anything to say about it.
+Request bodies are bounded. `MAX_REQUEST_BODY_BYTES`, 1 MiB by default, is enforced in `app/core/http/body_limit.py`: a declared `Content-Length` above it answers 413 before the route runs, and a body that streams in without one is cut off where it passes the limit. Without that, a single anonymous `POST /api/v1/users` carrying a gigabyte would be read into memory before validation had anything to say about it.
 
 Every response carries `Cache-Control: no-store`. The API answers JSON that is either personal or a token, and no intermediary should keep a copy of either.
 
-CSRF protection is absent deliberately. Authentication is bearer-token only and nothing sets a cookie, so a cross-site request has nothing to ride on. Add it if you introduce cookie sessions. CORS is off by default for the same reason it is safe to leave alone: with no origins allowed, browsers block cross-origin calls. When the frontend lives on another origin, set `CORS_ORIGINS` to a comma-separated list of named origins, and `app/core/cors.py` adds `CORSMiddleware` with those origins, no credentials, and `X-Request-ID` in `Access-Control-Expose-Headers`, without which a browser never sees the correlation ID it is meant to show the reader. A `*` in the list refuses to start.
+CSRF protection is absent deliberately. Authentication is bearer-token only and nothing sets a cookie, so a cross-site request has nothing to ride on. Add it if you introduce cookie sessions. CORS is off by default for the same reason it is safe to leave alone: with no origins allowed, browsers block cross-origin calls. When the frontend lives on another origin, set `CORS_ORIGINS` to a comma-separated list of named origins, and `app/core/http/cors.py` adds `CORSMiddleware` with those origins, no credentials, and `X-Request-ID` in `Access-Control-Expose-Headers`, without which a browser never sees the correlation ID it is meant to show the reader. A `*` in the list refuses to start.
 
 Rate limits on the auth endpoints come from `LOGIN_RATE_LIMIT` and `REGISTER_RATE_LIMIT`; login, refresh, logout and password change share the first. The default limiter counts in memory, so counts reset on restart and are per worker. Point slowapi at Redis before running more than one.
 
@@ -341,10 +343,13 @@ There is no CI workflow, so the hooks are the gate: `uv run pre-commit install -
 ```
 app/
   main.py                 # app factory; lifespan, routers, exception handlers
-  core/                   # config, security, exceptions, logging, observability
+  core/                   # config, security, domain exceptions, feature flags
+    http/                 # error envelope, security headers, CORS, body limit, rate limit
+    observability/        # logging, correlation ids, access log, metrics
   db/                     # declarative base, engine and session lifecycle
   api/
     deps.py               # shared dependencies (session, current user, services)
+    request_recorder.py   # writes the access log row on its own session
     v1/
       router.py           # aggregates v1 routers, public ones first
       routes/             # auth, users, items, requests, features

@@ -1,21 +1,22 @@
 import time
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 
 import structlog
 from fastapi import FastAPI, Request, Response
 from starlette.background import BackgroundTask, BackgroundTasks
 
-from app.core.middleware import CallNext
-from app.core.request_context import (
+from app.core.http.headers import CallNext
+from app.core.observability.request_context import (
     REQUEST_ID_HEADER,
     new_request_id,
     sanitize_request_id,
     set_request_id,
 )
-from app.core.request_recorder import RequestRecorder
 from app.schemas.request_log import RequestRecord
 
 SERVER_ERROR_STATUS = 500
+
+RequestRecorder = Callable[[RequestRecord], Awaitable[None]]
 
 logger = structlog.stdlib.get_logger("app.request")
 
