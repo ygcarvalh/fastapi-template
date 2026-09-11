@@ -3,7 +3,7 @@ from functools import lru_cache
 from typing import NamedTuple
 
 from app.core.config import get_settings
-from app.core.exceptions import AuthError
+from app.core.exceptions import AuthError, ForbiddenError
 from app.core.security import (
     INVALID_CREDENTIALS,
     create_access_token,
@@ -15,7 +15,7 @@ from app.core.security import (
 )
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.schemas.user import normalize_email
+from app.schemas.user import PasswordChange, normalize_email
 from app.services.protocols import (
     RefreshTokenRepositoryProtocol,
     UserRepositoryProtocol,
@@ -73,6 +73,16 @@ class AuthService:
 
     async def revoke_sessions(self, user: User) -> int:
         return await self._tokens.revoke_all_for_user(user.id, datetime.now(UTC))
+
+    # A valid access token is not enough, or a leaked one would be a takeover.
+    # Every refresh token goes with the old password; access tokens already
+    # minted keep working, since nothing is stored to compare them against.
+    async def change_password(self, user: User, data: PasswordChange) -> None:
+        if not verify_password(data.current_password, user.hashed_password):
+            raise ForbiddenError("Current password is incorrect")
+        user.hashed_password = hash_password(data.new_password)
+        await self._users.save(user)
+        await self.revoke_sessions(user)
 
     async def _issue(self, user: User) -> TokenPair:
         settings = get_settings()

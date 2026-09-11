@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app.api.deps import AuthServiceDep, CurrentUser, RequireAuth, UserServiceDep
+from app.api.deps import AuthServiceDep, CurrentUser, RequireAuth
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
 from app.schemas.auth import RefreshRequest, Token
@@ -63,8 +63,6 @@ async def change_password(
     request: Request,
     data: PasswordChange,
     current_user: CurrentUser,
-    users: UserServiceDep,
-    auth: AuthServiceDep,
+    service: AuthServiceDep,
 ) -> None:
-    await users.change_password(current_user, data)
-    await auth.revoke_sessions(current_user)
+    await service.change_password(current_user, data)

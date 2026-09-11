@@ -33,7 +33,7 @@ AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
 
 def get_user_service(session: SessionDep) -> UserService:
-    return UserService(UserRepository(session))
+    return UserService(UserRepository(session), ItemRepository(session))
 
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]

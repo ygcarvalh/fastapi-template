@@ -4,15 +4,17 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.core.exceptions import AuthError
+from app.core.exceptions import AuthError, ForbiddenError
 from app.core.security import (
     create_refresh_token,
     decode_access_token,
     decode_refresh_token,
     hash_password,
     hash_refresh_token,
+    verify_password,
 )
 from app.models.user import User
+from app.schemas.user import PasswordChange
 from app.services.auth_service import AuthService
 from tests.unit.fakes import FakeRefreshTokenRepository, FakeUserRepository
 
@@ -143,3 +145,32 @@ async def test_absent_user_and_wrong_password_are_indistinguishable() -> None:
     _, present_detail = await _time_rejected_login([_registered_user()])
 
     assert absent_detail == present_detail
+
+
+async def test_changing_the_password_rehashes_and_signs_every_device_out() -> None:
+    user = _registered_user()
+    service = _service([user])
+    pair = await service.authenticate(EMAIL, PASSWORD)
+
+    await service.change_password(
+        user, PasswordChange(current_password=PASSWORD, new_password="another-one")
+    )
+
+    assert verify_password("another-one", user.hashed_password)
+    with pytest.raises(AuthError):
+        await service.refresh(pair.refresh_token)
+
+
+async def test_changing_the_password_needs_the_current_one() -> None:
+    user = _registered_user()
+    service = _service([user])
+    pair = await service.authenticate(EMAIL, PASSWORD)
+
+    with pytest.raises(ForbiddenError):
+        await service.change_password(
+            user,
+            PasswordChange(current_password="not-it", new_password="another-one"),
+        )
+
+    assert verify_password(PASSWORD, user.hashed_password)
+    assert await service.refresh(pair.refresh_token)

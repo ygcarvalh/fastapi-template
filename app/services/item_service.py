@@ -36,6 +36,3 @@ class ItemService:
     async def delete(self, item_id: int, owner_id: int) -> None:
         item = await self.get_for_owner(item_id, owner_id)
         await self._repo.soft_delete(item)
-
-    async def delete_all_for_owner(self, owner_id: int) -> None:
-        await self._repo.soft_delete_for_owner(owner_id)

@@ -4,7 +4,6 @@ from fastapi import APIRouter, Query, Request, status
 
 from app.api.deps import (
     CurrentUser,
-    ItemServiceDep,
     PreferencesServiceDep,
     RequireAuth,
     UserServiceDep,
@@ -64,13 +63,8 @@ async def update_my_preferences(
 
 
 @private_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-async def deactivate_me(
-    current_user: CurrentUser,
-    users: UserServiceDep,
-    items: ItemServiceDep,
-) -> None:
-    await items.delete_all_for_owner(current_user.id)
-    await users.deactivate(current_user)
+async def deactivate_me(current_user: CurrentUser, service: UserServiceDep) -> None:
+    await service.deactivate(current_user)
 
 
 @private_router.get("", dependencies=[require_role(UserRole.ADMIN)])

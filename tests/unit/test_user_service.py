@@ -2,15 +2,16 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.models.item import Item
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.user_service import UserService
-from tests.unit.fakes import FakeUserRepository
+from tests.unit.fakes import FakeItemRepository, FakeUserRepository
 
 
 async def test_register_creates_user_when_email_free() -> None:
     repo = FakeUserRepository()
-    service = UserService(repo)
+    service = UserService(repo, FakeItemRepository())
 
     result = await service.register(UserCreate(email="a@b.com", password="secret123"))
 
@@ -22,7 +23,7 @@ async def test_register_creates_user_when_email_free() -> None:
 async def test_register_rejects_duplicate_email() -> None:
     existing = User(email="a@b.com", hashed_password="x")
     repo = FakeUserRepository([existing])
-    service = UserService(repo)
+    service = UserService(repo, FakeItemRepository())
 
     with pytest.raises(ConflictError):
         await service.register(UserCreate(email="a@b.com", password="secret123"))
@@ -31,7 +32,7 @@ async def test_register_rejects_duplicate_email() -> None:
 
 
 async def test_get_missing_user_raises() -> None:
-    service = UserService(FakeUserRepository())
+    service = UserService(FakeUserRepository(), FakeItemRepository())
 
     with pytest.raises(NotFoundError):
         await service.get(404)
@@ -64,7 +65,9 @@ class RacingUserRepository(FakeUserRepository):
 
 
 async def test_a_registration_that_loses_the_race_is_a_conflict() -> None:
-    service = UserService(RacingUserRepository(_UniqueViolation()))
+    service = UserService(
+        RacingUserRepository(_UniqueViolation()), FakeItemRepository()
+    )
 
     with pytest.raises(ConflictError, match="already registered"):
         await service.register(
@@ -73,7 +76,9 @@ async def test_a_registration_that_loses_the_race_is_a_conflict() -> None:
 
 
 async def test_an_address_change_that_loses_the_race_is_a_conflict() -> None:
-    service = UserService(RacingUserRepository(_UniqueViolation()))
+    service = UserService(
+        RacingUserRepository(_UniqueViolation()), FakeItemRepository()
+    )
     user = User(id=1, email="before@example.com", hashed_password="x")
 
     with pytest.raises(ConflictError, match="already registered"):
@@ -81,9 +86,27 @@ async def test_an_address_change_that_loses_the_race_is_a_conflict() -> None:
 
 
 async def test_any_other_constraint_failure_is_still_a_crash() -> None:
-    service = UserService(RacingUserRepository(_ForeignKeyViolation()))
+    service = UserService(
+        RacingUserRepository(_ForeignKeyViolation()), FakeItemRepository()
+    )
 
     with pytest.raises(IntegrityError):
         await service.register(
             UserCreate(email="orphan@example.com", password="secret123")
         )
+
+
+async def test_deactivating_an_account_takes_its_items_with_it() -> None:
+    user = User(email="leaving@example.com", hashed_password="x")
+    user.id = 3
+    items = FakeItemRepository(
+        [Item(title="mine", owner_id=3), Item(title="theirs", owner_id=4)]
+    )
+    users = FakeUserRepository([user])
+    service = UserService(users, items)
+
+    await service.deactivate(user)
+
+    assert users.deactivated == [user]
+    assert [item.title for item in items.deleted] == ["mine"]
+    assert await items.count_for_owner(4) == 1
