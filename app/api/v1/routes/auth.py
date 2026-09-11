@@ -48,8 +48,12 @@ async def refresh(
 
 # Public because a client whose access token has already expired still has to be
 # able to retire its refresh token, and the token it sends is the credential.
+# Throttled because it is an unauthenticated write.
 @public_router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(data: RefreshRequest, service: AuthServiceDep) -> None:
+@limiter.limit(lambda: get_settings().login_rate_limit)
+async def logout(
+    request: Request, data: RefreshRequest, service: AuthServiceDep
+) -> None:
     await service.logout(data.refresh_token)
 
 

@@ -88,3 +88,17 @@ async def test_a_throttled_response_carries_the_envelope(
     assert body["detail"] == RATE_LIMIT_DETAIL
     assert body["message"] == RATE_LIMIT_MESSAGE
     assert body["request_id"] == response.headers["x-request-id"]
+
+
+async def test_repeated_sign_outs_are_throttled(
+    throttled_client: AsyncClient,
+) -> None:
+    statuses = []
+    for _ in range(4):
+        response = await throttled_client.post(
+            "/api/v1/auth/logout", json={"refresh_token": "not-a-token-we-issued"}
+        )
+        statuses.append(response.status_code)
+
+    assert statuses[:3] == [204, 204, 204]
+    assert statuses[3] == 429
