@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import hash_password
 from app.models.item import Item
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.user_service import UserService
 from tests.unit.fakes import FakeItemRepository, FakeUserRepository
@@ -30,6 +30,72 @@ async def test_register_rejects_duplicate_email() -> None:
         await service.register(UserCreate(email="a@b.com", password="secret123"))
 
     assert repo.created == []
+
+
+async def test_the_account_that_opens_an_empty_database_is_an_administrator() -> None:
+    service = UserService(FakeUserRepository(), FakeItemRepository())
+
+    first = await service.register(UserCreate(email="a@b.com", password="secret123"))
+
+    assert first.role == UserRole.ADMIN
+
+
+async def test_every_later_account_registers_as_a_plain_user() -> None:
+    repo = FakeUserRepository()
+    service = UserService(repo, FakeItemRepository())
+    await service.register(UserCreate(email="first@b.com", password="secret123"))
+
+    second = await service.register(
+        UserCreate(email="second@b.com", password="secret123")
+    )
+
+    assert second.role == UserRole.USER
+
+
+async def test_a_closed_deployment_does_not_hand_admin_to_the_next_registration() -> (
+    None
+):
+    repo = FakeUserRepository()
+    items = FakeItemRepository()
+    service = UserService(repo, items)
+    only = await service.register(UserCreate(email="only@b.com", password="secret123"))
+    await service.deactivate(only, "secret123")
+
+    again = await service.register(UserCreate(email="next@b.com", password="secret123"))
+
+    assert again.role == UserRole.USER
+
+
+async def test_an_administrator_promotes_another_account() -> None:
+    admin = User(id=1, email="admin@b.com", hashed_password="x", role=UserRole.ADMIN)
+    target = User(id=2, email="other@b.com", hashed_password="x", role=UserRole.USER)
+    repo = FakeUserRepository([admin, target])
+    service = UserService(repo, FakeItemRepository())
+
+    result = await service.set_role(admin, 2, UserRole.ADMIN)
+
+    assert result.role == UserRole.ADMIN
+    assert repo.saved == [target]
+
+
+async def test_an_administrator_cannot_change_their_own_role() -> None:
+    admin = User(id=1, email="admin@b.com", hashed_password="x", role=UserRole.ADMIN)
+    repo = FakeUserRepository([admin])
+    service = UserService(repo, FakeItemRepository())
+
+    with pytest.raises(ForbiddenError):
+        await service.set_role(admin, 1, UserRole.USER)
+
+    assert admin.role == UserRole.ADMIN
+    assert repo.saved == []
+
+
+async def test_changing_the_role_of_a_missing_account_raises() -> None:
+    admin = User(id=1, email="admin@b.com", hashed_password="x", role=UserRole.ADMIN)
+    service = UserService(FakeUserRepository([admin]), FakeItemRepository())
+
+    with pytest.raises(NotFoundError):
+        await service.set_role(admin, 404, UserRole.ADMIN)
 
 
 async def test_get_missing_user_raises() -> None:

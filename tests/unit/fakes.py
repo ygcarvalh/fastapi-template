@@ -38,6 +38,9 @@ class FakeUserRepository:
     async def count_all(self) -> int:
         return len(self._users)
 
+    async def exists_any(self) -> bool:
+        return bool(self._users)
+
     async def soft_delete(self, user: User) -> None:
         user.mark_deleted()
         self.deactivated.append(user)

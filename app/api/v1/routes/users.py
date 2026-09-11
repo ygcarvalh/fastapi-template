@@ -15,7 +15,13 @@ from app.models.user import UserRole
 from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import Page, PageParams
 from app.schemas.preferences import PreferencesRead, PreferencesUpdate
-from app.schemas.user import AccountDeactivate, UserCreate, UserRead, UserUpdate
+from app.schemas.user import (
+    AccountDeactivate,
+    UserCreate,
+    UserRead,
+    UserRoleUpdate,
+    UserUpdate,
+)
 
 public_router = APIRouter(prefix="/users", tags=["users"])
 private_router = APIRouter(
@@ -81,3 +87,19 @@ async def list_users(
         limit=page.limit,
         offset=page.offset,
     )
+
+
+@private_router.get("/{user_id}", dependencies=[require_role(UserRole.ADMIN)])
+async def read_user(user_id: int, service: UserServiceDep) -> UserRead:
+    return UserRead.model_validate(await service.get(user_id))
+
+
+@private_router.patch("/{user_id}/role", dependencies=[require_role(UserRole.ADMIN)])
+async def update_user_role(
+    user_id: int,
+    data: UserRoleUpdate,
+    current_user: CurrentUser,
+    service: UserServiceDep,
+) -> UserRead:
+    user = await service.set_role(current_user, user_id, data.role)
+    return UserRead.model_validate(user)

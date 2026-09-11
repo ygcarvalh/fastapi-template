@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import hash_password, verify_password
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.protocols import ItemRepositoryProtocol, UserRepositoryProtocol
 
@@ -30,10 +30,12 @@ class UserService:
     async def register(self, data: UserCreate) -> User:
         if await self._repo.get_by_email(data.email) is not None:
             raise ConflictError(EMAIL_TAKEN)
+        first = not await self._repo.exists_any()
         user = User(
             email=data.email,
             name=data.name,
             hashed_password=hash_password(data.password),
+            role=UserRole.ADMIN if first else UserRole.USER,
         )
         try:
             return await self._repo.create(user)
@@ -59,6 +61,13 @@ class UserService:
             return await self._repo.save(user)
         except IntegrityError as error:
             raise _as_conflict(error) from error
+
+    async def set_role(self, actor: User, user_id: int, role: UserRole) -> User:
+        if actor.id == user_id:
+            raise ForbiddenError("You cannot change your own role")
+        user = await self.get(user_id)
+        user.role = role
+        return await self._repo.save(user)
 
     async def list_all(self, limit: int, offset: int) -> tuple[Sequence[User], int]:
         users = await self._repo.list_all(limit, offset)

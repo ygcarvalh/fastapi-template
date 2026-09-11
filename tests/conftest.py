@@ -91,6 +91,7 @@ async def auth_client(
     user_factory: Callable[..., Awaitable[dict[str, object]]],
 ) -> AsyncClient:
     email, password = "auth@example.com", "secret123"
+    await user_factory(email="bootstrap@example.com", password=password)
     await user_factory(email=email, password=password)
     response = await client.post(
         "/api/v1/auth/login", data={"username": email, "password": password}

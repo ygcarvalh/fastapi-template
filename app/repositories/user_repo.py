@@ -47,6 +47,10 @@ class UserRepository:
         )
         return result.scalar_one()
 
+    async def exists_any(self) -> bool:
+        result = await self._session.execute(select(select(User.id).exists()))
+        return result.scalar_one()
+
     async def soft_delete(self, user: User) -> None:
         user.mark_deleted()
         await self._session.flush()
