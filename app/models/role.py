@@ -8,6 +8,7 @@ from app.db.mixins import TimestampMixin
 
 NAME_LENGTH = 50
 SCOPE_LENGTH = 10
+FEATURES_LENGTH = 200
 
 
 class Scope(StrEnum):
@@ -37,6 +38,7 @@ class Role(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(NAME_LENGTH), unique=True)
+    features: Mapped[str | None] = mapped_column(String(FEATURES_LENGTH), default=None)
 
     grants: Mapped[list["RolePermission"]] = relationship(
         back_populates="role", cascade="all, delete-orphan", lazy="selectin"

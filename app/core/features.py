@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from enum import StrEnum
 
 from fastapi import Depends, params
@@ -22,6 +23,18 @@ def enabled_features() -> frozenset[Feature]:
 
 def is_enabled(feature: Feature) -> bool:
     return feature in enabled_features()
+
+
+# A role with no list of its own adds nothing. One with a list hands that list
+# to every account holding it, capped by what this deployment serves.
+def inherited_features(
+    lists: Sequence[str | None], ceiling: frozenset[Feature]
+) -> frozenset[Feature] | None:
+    named = [parse_features(raw) for raw in lists if raw is not None]
+    if not named:
+        return None
+    wanted = frozenset[str]().union(*named)
+    return frozenset(feature for feature in ceiling if feature.value in wanted)
 
 
 def available_features() -> list[str]:

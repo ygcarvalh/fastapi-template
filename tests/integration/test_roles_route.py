@@ -232,6 +232,58 @@ async def test_the_members_of_a_missing_role_are_a_404(
     assert (await admin_client.get("/api/v1/roles/404/users")).status_code == 404
 
 
+async def test_a_role_carries_a_feature_list_of_its_own(
+    admin_client: AsyncClient,
+) -> None:
+    created = (
+        await admin_client.post(
+            "/api/v1/roles",
+            json={"name": "finance", "grants": [], "features": "items"},
+        )
+    ).json()
+
+    assert created["features"] == "items"
+
+    updated = await admin_client.put(
+        f"/api/v1/roles/{created['id']}",
+        json={"name": "finance", "grants": [], "features": None},
+    )
+
+    assert updated.json()["features"] is None
+
+
+async def test_an_account_inherits_the_features_of_its_roles(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    await admin_client.post(
+        "/api/v1/roles",
+        json={"name": "finance", "grants": [], "features": "items"},
+    )
+    holder = await user_factory(email="heir@example.com", password=PASSWORD)
+    await admin_client.post(
+        f"/api/v1/users/{holder['id']}/roles", json={"role": "finance"}
+    )
+
+    login = await admin_client.post(
+        "/api/v1/auth/login",
+        data={"username": "heir@example.com", "password": PASSWORD},
+    )
+    admin_client.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
+
+    response = await admin_client.get("/api/v1/features")
+
+    assert response.json()["inherited"] == ["items"]
+
+
+async def test_an_account_whose_roles_say_nothing_inherits_nothing(
+    admin_client: AsyncClient,
+) -> None:
+    response = await admin_client.get("/api/v1/features")
+
+    assert response.json()["inherited"] is None
+
+
 async def test_managing_the_members_of_a_role_requires_the_permission(
     auth_client: AsyncClient,
 ) -> None:

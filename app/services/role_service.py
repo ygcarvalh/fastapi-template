@@ -44,7 +44,7 @@ class RoleService:
     async def create(self, data: RoleWrite) -> Role:
         if await self._roles.get_by_name(data.name) is not None:
             raise ConflictError(NAME_TAKEN)
-        role = Role(name=data.name)
+        role = Role(name=data.name, features=data.features)
         role.grants = await self._grants(data)
         return await self._roles.create(role)
 
@@ -56,6 +56,7 @@ class RoleService:
         if taken is not None and taken.id != role.id:
             raise ConflictError(NAME_TAKEN)
         role.name = data.name
+        role.features = data.features
         role.grants = await self._grants(data)
         return await self._roles.save(role)
 

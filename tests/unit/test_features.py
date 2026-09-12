@@ -1,7 +1,13 @@
 import pytest
 
 from app.core.config import get_settings
-from app.core.features import Feature, enabled_features, is_enabled, parse_features
+from app.core.features import (
+    Feature,
+    enabled_features,
+    inherited_features,
+    is_enabled,
+    parse_features,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -30,3 +36,29 @@ def test_a_flag_left_out_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert is_enabled(Feature.ITEMS)
     assert not is_enabled(Feature.REQUEST_LOG)
+
+
+def test_a_role_without_a_list_hands_down_nothing() -> None:
+    assert inherited_features([None, None], enabled_features()) is None
+
+
+def test_the_lists_of_every_role_add_up() -> None:
+    ceiling = frozenset({Feature.ITEMS, Feature.REQUEST_LOG})
+
+    inherited = inherited_features(["items", "request-log"], ceiling)
+
+    assert inherited == ceiling
+
+
+def test_a_role_list_cannot_reach_past_what_the_deployment_serves() -> None:
+    ceiling = frozenset({Feature.ITEMS})
+
+    inherited = inherited_features(["items,request-log"], ceiling)
+
+    assert inherited == frozenset({Feature.ITEMS})
+
+
+def test_a_role_that_turns_everything_off_is_a_real_answer() -> None:
+    ceiling = frozenset({Feature.ITEMS})
+
+    assert inherited_features([""], ceiling) == frozenset()
