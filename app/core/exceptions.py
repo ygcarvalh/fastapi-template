@@ -45,3 +45,13 @@ class ForbiddenError(DomainError):
 class PayloadTooLargeError(DomainError):
     status_code = 413
     code = ErrorCode.PAYLOAD_TOO_LARGE
+
+
+class PreconditionRequiredError(DomainError):
+    status_code = 428
+    code = ErrorCode.PRECONDITION_REQUIRED
+
+
+class PreconditionFailedError(DomainError):
+    status_code = 412
+    code = ErrorCode.VERSION_CONFLICT

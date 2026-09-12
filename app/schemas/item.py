@@ -27,5 +27,6 @@ class ItemRead(BaseModel):
     title: str
     description: str | None
     owner_id: int
+    version: int
     created_at: datetime
     updated_at: datetime

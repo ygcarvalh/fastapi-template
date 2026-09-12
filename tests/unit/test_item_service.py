@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, PreconditionFailedError
 from app.models.item import Item
 from app.schemas.item import ItemUpdate
 from app.services.item_service import ItemService
@@ -79,3 +79,49 @@ async def test_list_for_owner_reports_the_unpaginated_total() -> None:
 
     assert [item.id for item in page] == [1, 2]
     assert total == 3
+
+
+async def test_update_against_the_version_read_goes_through() -> None:
+    item = _owned_item()
+    item.version = 4
+    service = ItemService(FakeItemRepository([item]))
+
+    result = await service.update(1, OWNER_ID, ItemUpdate(title="new"), 4)
+
+    assert result.title == "new"
+
+
+async def test_update_against_a_stale_version_is_refused() -> None:
+    item = _owned_item()
+    item.version = 4
+    service = ItemService(FakeItemRepository([item]))
+
+    with pytest.raises(PreconditionFailedError) as raised:
+        await service.update(1, OWNER_ID, ItemUpdate(title="new"), 3)
+
+    assert raised.value.params == {"expected": 3, "current": 4}
+    assert item.title == "old"
+
+
+async def test_delete_against_a_stale_version_is_refused() -> None:
+    item = _owned_item()
+    item.version = 2
+    repo = FakeItemRepository([item])
+    service = ItemService(repo)
+
+    with pytest.raises(PreconditionFailedError):
+        await service.delete(1, OWNER_ID, 1)
+
+    assert repo.deleted == []
+
+
+async def test_a_caller_that_names_no_version_writes_against_whatever_is_there() -> (
+    None
+):
+    item = _owned_item()
+    item.version = 9
+    service = ItemService(FakeItemRepository([item]))
+
+    result = await service.update(1, OWNER_ID, ItemUpdate(title="new"), None)
+
+    assert result.title == "new"

@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import DateTime, Integer, func, text
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 
 class SoftDeleteMixin:
@@ -22,3 +23,11 @@ class TimestampMixin:
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class VersionMixin:
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+
+    @declared_attr.directive
+    def __mapper_args__(cls) -> dict[str, Any]:
+        return {"version_id_col": cls.version}

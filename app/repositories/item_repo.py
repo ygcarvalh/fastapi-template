@@ -2,10 +2,13 @@ from collections.abc import Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
+from app.core.exceptions import PreconditionFailedError
 from app.models.item import Item
 
 ACTIVE = Item.deleted_at.is_(None)
+LOST_UPDATE = "This item changed while you were editing it"
 
 
 class ItemRepository:
@@ -45,13 +48,19 @@ class ItemRepository:
         return item
 
     async def save(self, item: Item) -> Item:
-        await self._session.flush()
+        await self._flush()
         await self._session.refresh(item)
         return item
 
     async def soft_delete(self, item: Item) -> None:
         item.mark_deleted()
-        await self._session.flush()
+        await self._flush()
+
+    async def _flush(self) -> None:
+        try:
+            await self._session.flush()
+        except StaleDataError as error:
+            raise PreconditionFailedError(LOST_UPDATE) from error
 
     async def soft_delete_for_owner(self, owner_id: int) -> None:
         owned = await self._session.execute(

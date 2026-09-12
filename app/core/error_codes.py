@@ -11,6 +11,8 @@ class ErrorCode(StrEnum):
     UNAUTHORIZED = "error.unauthorized"
     FORBIDDEN = "error.forbidden"
     PAYLOAD_TOO_LARGE = "error.payloadTooLarge"
+    PRECONDITION_REQUIRED = "error.preconditionRequired"
+    VERSION_CONFLICT = "error.versionConflict"
 
     AUTH_INVALID_CREDENTIALS = "auth.invalidCredentials"
     AUTH_BAD_LOGIN = "auth.badLogin"

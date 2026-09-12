@@ -36,3 +36,8 @@ AUTHENTICATED_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse},
     403: {"model": ErrorResponse},
 }
+
+CONCURRENCY_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    412: {"model": ErrorResponse},
+    428: {"model": ErrorResponse},
+}
