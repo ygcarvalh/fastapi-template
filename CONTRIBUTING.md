@@ -59,6 +59,7 @@ app/
   core/              # config, security, domain exceptions, feature flags
   core/http/         # error envelope, security headers, CORS, body limit, rate limiting
   core/observability/  # logging, correlation ids, access log, metrics
+  core/audit/        # the session listeners that write the audit trail
   db/                # declarative base, column mixins, engine and session
 ```
 
@@ -69,6 +70,8 @@ Services never import `app/repositories`. They depend on `Protocol` interfaces t
 The transaction boundary is the request. `get_session` commits on success and rolls back on error, so services and repositories only `flush`. A service that commits on its own breaks the guarantee that a failed request leaves nothing behind.
 
 `app/core` imports nothing from the layers outside it. Anything that needs a repository or a service to do its job is wiring, and wiring lives next to the composition root: `app/api/request_recorder.py` is the example, handed to the access-log middleware as a callable so the middleware never learns where rows go.
+
+Every mapped change is recorded whether you ask for it or not. `app/core/audit/listeners.py` hangs off the SQLAlchemy session, so an insert, update or delete that goes through a repository lands in `audit_logs` with its before and after values, inside the same transaction. Two things follow. A bulk `update()` or `delete()` against an audited table is refused outright, because it would change rows the trail never sees — load the rows, or wrap genuine maintenance in `audit_suppressed()`. And a column holding a secret belongs in `REDACTED_COLUMNS` in `app/core/audit/policy.py` before it ships, since redaction is a denylist and a new column is born exposed.
 
 Routes call one use case each. `DELETE /users/me` calls `UserService.deactivate`, which soft-deletes the account's items and then the account; `POST /auth/password` calls `AuthService.change_password`, which re-verifies, rehashes and revokes every refresh token. A rule that two steps belong together is a service's rule, so a second caller cannot forget half of it.
 
