@@ -66,9 +66,13 @@ async def test_a_retention_run_deletes_in_batches(db_session: AsyncSession) -> N
     assert len(await repo.list_page(RequestLogQuery(limit=50))) == 2
 
 
-async def test_expired_tokens_are_swept(db_session: AsyncSession) -> None:
+async def test_expired_tokens_are_swept(
+    db_session: AsyncSession, plain_role_id: int
+) -> None:
     now = datetime.now(UTC)
-    owner = User(email="sweeper@example.com", hashed_password="x")
+    owner = User(
+        email="sweeper@example.com", hashed_password="x", role_id=plain_role_id
+    )
     db_session.add(owner)
     await db_session.flush()
     db_session.add_all(

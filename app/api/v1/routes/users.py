@@ -7,16 +7,17 @@ from app.api.deps import (
     PreferencesServiceDep,
     RequireAuth,
     UserServiceDep,
-    require_role,
+    require_permission,
 )
+from app.core.authorization import READ, UPDATE, USERS, granted
 from app.core.config import get_settings
 from app.core.http.rate_limit import limiter
-from app.models.user import UserRole
 from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import Page, PageParams
 from app.schemas.preferences import PreferencesRead, PreferencesUpdate
 from app.schemas.user import (
     AccountDeactivate,
+    GrantRead,
     UserCreate,
     UserRead,
     UserRoleUpdate,
@@ -75,7 +76,15 @@ async def deactivate_me(
     await service.deactivate(current_user, data.password)
 
 
-@private_router.get("", dependencies=[require_role(UserRole.ADMIN)])
+@private_router.get("/me/permissions")
+async def read_my_permissions(current_user: CurrentUser) -> list[GrantRead]:
+    return [
+        GrantRead(resource=resource, action=action, scope=scope)
+        for resource, action, scope in granted(current_user)
+    ]
+
+
+@private_router.get("", dependencies=[require_permission(USERS, READ)])
 async def list_users(
     service: UserServiceDep,
     page: Annotated[PageParams, Query()],
@@ -89,12 +98,14 @@ async def list_users(
     )
 
 
-@private_router.get("/{user_id}", dependencies=[require_role(UserRole.ADMIN)])
+@private_router.get("/{user_id}", dependencies=[require_permission(USERS, READ)])
 async def read_user(user_id: int, service: UserServiceDep) -> UserRead:
     return UserRead.model_validate(await service.get(user_id))
 
 
-@private_router.patch("/{user_id}/role", dependencies=[require_role(UserRole.ADMIN)])
+@private_router.patch(
+    "/{user_id}/role", dependencies=[require_permission(USERS, UPDATE)]
+)
 async def update_user_role(
     user_id: int,
     data: UserRoleUpdate,

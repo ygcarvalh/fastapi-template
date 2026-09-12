@@ -7,8 +7,10 @@ STAMPED_EMAIL = "stamped@example.com"
 BUMPED_EMAIL = "bumped@example.com"
 
 
-async def test_new_rows_get_both_timestamps(db_session: AsyncSession) -> None:
-    user = User(email=STAMPED_EMAIL, hashed_password="x")
+async def test_new_rows_get_both_timestamps(
+    db_session: AsyncSession, plain_role_id: int
+) -> None:
+    user = User(email=STAMPED_EMAIL, hashed_password="x", role_id=plain_role_id)
     db_session.add(user)
     await db_session.flush()
 
@@ -16,12 +18,14 @@ async def test_new_rows_get_both_timestamps(db_session: AsyncSession) -> None:
     assert user.updated_at == user.created_at
 
 
-async def test_updated_at_advances_on_a_later_transaction(engine: AsyncEngine) -> None:
+async def test_updated_at_advances_on_a_later_transaction(
+    engine: AsyncEngine, plain_role_id: int
+) -> None:
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     try:
         async with factory() as session:
-            user = User(email=BUMPED_EMAIL, hashed_password="x")
+            user = User(email=BUMPED_EMAIL, hashed_password="x", role_id=plain_role_id)
             session.add(user)
             await session.commit()
             created_at = user.created_at

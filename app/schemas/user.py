@@ -10,7 +10,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.models.user import UserRole
+from app.models.role import Role, Scope
 
 BCRYPT_MAX_PASSWORD_BYTES = 72
 MIN_PASSWORD_LENGTH = 8
@@ -91,7 +91,13 @@ class AccountDeactivate(BaseModel):
 
 
 class UserRoleUpdate(BaseModel):
-    role: UserRole
+    role: str
+
+
+class GrantRead(BaseModel):
+    resource: str
+    action: str
+    scope: Scope
 
 
 class UserRead(BaseModel):
@@ -100,6 +106,11 @@ class UserRead(BaseModel):
     id: int
     email: EmailStr
     name: str | None
-    role: UserRole
+    role: str
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def read_the_role_name(cls, value: object) -> object:
+        return value.name if isinstance(value, Role) else value

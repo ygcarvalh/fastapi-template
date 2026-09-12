@@ -5,6 +5,7 @@ from typing import Protocol
 from app.models.item import Item
 from app.models.refresh_token import RefreshToken
 from app.models.request_log import RequestLog
+from app.models.role import Permission, Role
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.schemas.request_log import RequestLogQuery
@@ -23,9 +24,31 @@ class UserRepositoryProtocol(Protocol):
 
     async def count_all(self) -> int: ...
 
+    async def count_for_role(self, role_id: int) -> int: ...
+
     async def exists_any(self) -> bool: ...
 
     async def soft_delete(self, user: User) -> None: ...
+
+
+class RoleRepositoryProtocol(Protocol):
+    async def get(self, role_id: int) -> Role | None: ...
+
+    async def get_by_name(self, name: str) -> Role | None: ...
+
+    async def list_all(self) -> Sequence[Role]: ...
+
+    async def create(self, role: Role) -> Role: ...
+
+    async def save(self, role: Role) -> Role: ...
+
+    async def delete(self, role: Role) -> None: ...
+
+
+class PermissionRepositoryProtocol(Protocol):
+    async def get(self, resource: str, action: str) -> Permission | None: ...
+
+    async def list_all(self) -> Sequence[Permission]: ...
 
 
 class ItemRepositoryProtocol(Protocol):

@@ -1,9 +1,11 @@
 from collections.abc import Sequence
 from datetime import datetime
 
+from app.core.authorization import BASE_ROLES
 from app.models.item import Item
 from app.models.refresh_token import RefreshToken
 from app.models.request_log import RequestLog
+from app.models.role import Permission, Role, RolePermission, Scope
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.schemas.request_log import RequestLogQuery, decode_cursor, outcome_for
@@ -15,6 +17,7 @@ class FakeUserRepository:
         self.created: list[User] = []
         self.saved: list[User] = []
         self.deactivated: list[User] = []
+        self.role_counts: dict[int, int] = {}
 
     async def get_by_email(self, email: str) -> User | None:
         return next((user for user in self._users if user.email == email), None)
@@ -38,12 +41,87 @@ class FakeUserRepository:
     async def count_all(self) -> int:
         return len(self._users)
 
+    async def count_for_role(self, role_id: int) -> int:
+        return self.role_counts.get(role_id, 0)
+
     async def exists_any(self) -> bool:
         return bool(self._users)
 
     async def soft_delete(self, user: User) -> None:
         user.mark_deleted()
         self.deactivated.append(user)
+
+
+class FakeRoleRepository:
+    def __init__(self, roles: Sequence[Role] = ()) -> None:
+        self._roles: list[Role] = list(roles) or [
+            role_with(name, grants) for name, grants in BASE_ROLES.items()
+        ]
+        self.deleted: list[Role] = []
+
+    async def get(self, role_id: int) -> Role | None:
+        return next((role for role in self._roles if role.id == role_id), None)
+
+    async def get_by_name(self, name: str) -> Role | None:
+        return next((role for role in self._roles if role.name == name), None)
+
+    async def list_all(self) -> Sequence[Role]:
+        return sorted(self._roles, key=lambda role: role.name)
+
+    async def create(self, role: Role) -> Role:
+        role.id = len(self._roles) + 100
+        self._roles.append(role)
+        return role
+
+    async def save(self, role: Role) -> Role:
+        return role
+
+    async def delete(self, role: Role) -> None:
+        self._roles.remove(role)
+        self.deleted.append(role)
+
+
+class FakePermissionRepository:
+    def __init__(self, permissions: Sequence[Permission] = ()) -> None:
+        self._permissions: list[Permission] = list(permissions) or [
+            Permission(resource=resource, action=action)
+            for resource, action in sorted(
+                {(r, a) for grants in BASE_ROLES.values() for r, a, _s in grants}
+            )
+        ]
+
+    async def get(self, resource: str, action: str) -> Permission | None:
+        return next(
+            (
+                permission
+                for permission in self._permissions
+                if permission.resource == resource and permission.action == action
+            ),
+            None,
+        )
+
+    async def list_all(self) -> Sequence[Permission]:
+        return self._permissions
+
+
+def role_with(name: str, grants: Sequence[tuple[str, str, Scope]]) -> Role:
+    role = Role(name=name)
+    role.id = len(name)
+    role.grants = [
+        RolePermission(
+            permission=Permission(resource=resource, action=action), scope=scope
+        )
+        for resource, action, scope in grants
+    ]
+    return role
+
+
+def admin_role() -> Role:
+    return role_with("admin", BASE_ROLES["admin"])
+
+
+def user_role() -> Role:
+    return role_with("user", BASE_ROLES["user"])
 
 
 class FakeItemRepository:

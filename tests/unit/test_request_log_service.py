@@ -4,7 +4,8 @@ import pytest
 
 from app.core.exceptions import NotFoundError
 from app.models.request_log import RequestLog
-from app.models.user import User, UserRole
+from app.models.role import Scope
+from app.models.user import User
 from app.schemas.request_log import (
     RequestLogQuery,
     RequestRecord,
@@ -13,7 +14,7 @@ from app.schemas.request_log import (
     outcome_for,
 )
 from app.services.request_log_service import RequestLogService
-from tests.unit.fakes import FakeRequestLogRepository
+from tests.unit.fakes import FakeRequestLogRepository, user_role
 
 NOW = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
 
@@ -37,12 +38,12 @@ def _entry(
     )
 
 
-def _user(user_id: int, role: UserRole = UserRole.USER) -> User:
+def _user(user_id: int) -> User:
     return User(
         id=user_id,
         email=f"user{user_id}@example.com",
         hashed_password="x",
-        role=role,
+        role=user_role(),
     )
 
 
@@ -67,7 +68,7 @@ async def test_an_admin_reads_every_row() -> None:
     )
 
     entries, next_cursor = await RequestLogService(repo).list_for(
-        _user(1, UserRole.ADMIN), RequestLogQuery()
+        _user(1), Scope.ALL, RequestLogQuery()
     )
 
     assert next_cursor is None
@@ -79,7 +80,9 @@ async def test_a_user_reads_only_their_own_rows() -> None:
         [_entry("a", user_id=1), _entry("b", user_id=2), _entry("c")]
     )
 
-    entries, _ = await RequestLogService(repo).list_for(_user(1), RequestLogQuery())
+    entries, _ = await RequestLogService(repo).list_for(
+        _user(1), Scope.OWN, RequestLogQuery()
+    )
 
     assert [entry.request_id for entry in entries] == ["a"]
 
@@ -88,7 +91,7 @@ async def test_a_user_cannot_ask_for_someone_elses_rows() -> None:
     repo = FakeRequestLogRepository([_entry("a", user_id=1), _entry("b", user_id=2)])
 
     entries, _ = await RequestLogService(repo).list_for(
-        _user(1), RequestLogQuery(user_id=2)
+        _user(1), Scope.OWN, RequestLogQuery(user_id=2)
     )
 
     assert [entry.request_id for entry in entries] == ["a"]
@@ -104,7 +107,7 @@ async def test_the_outcome_filter_narrows_the_page() -> None:
     )
 
     entries, _ = await RequestLogService(repo).list_for(
-        _user(1), RequestLogQuery(outcome="error")
+        _user(1), Scope.OWN, RequestLogQuery(outcome="error")
     )
 
     assert [entry.status_code for entry in entries] == [500]
@@ -119,7 +122,7 @@ async def test_the_path_filter_matches_a_prefix() -> None:
     )
 
     entries, _ = await RequestLogService(repo).list_for(
-        _user(1), RequestLogQuery(path="/api/v1/users")
+        _user(1), Scope.OWN, RequestLogQuery(path="/api/v1/users")
     )
 
     assert [entry.request_id for entry in entries] == ["users"]
@@ -129,7 +132,7 @@ async def test_the_window_filters_by_time() -> None:
     repo = FakeRequestLogRepository([_entry("old", user_id=1)])
 
     entries, _ = await RequestLogService(repo).list_for(
-        _user(1), RequestLogQuery(since=NOW + timedelta(seconds=1))
+        _user(1), Scope.OWN, RequestLogQuery(since=NOW + timedelta(seconds=1))
     )
 
     assert entries == []
@@ -144,13 +147,15 @@ async def test_a_page_stops_at_its_limit_and_offers_a_cursor() -> None:
     repo = FakeRequestLogRepository([_entry(f"row-{i}", user_id=1) for i in range(3)])
     service = RequestLogService(repo)
 
-    first, cursor = await service.list_for(_user(1), RequestLogQuery(limit=2))
+    first, cursor = await service.list_for(
+        _user(1), Scope.OWN, RequestLogQuery(limit=2)
+    )
 
     assert [entry.request_id for entry in first] == ["row-2", "row-1"]
     assert cursor is not None
 
     rest, exhausted = await service.list_for(
-        _user(1), RequestLogQuery(limit=2, cursor=cursor)
+        _user(1), Scope.OWN, RequestLogQuery(limit=2, cursor=cursor)
     )
 
     assert [entry.request_id for entry in rest] == ["row-0"]
@@ -161,7 +166,7 @@ async def test_a_full_last_page_offers_no_cursor() -> None:
     repo = FakeRequestLogRepository([_entry(f"row-{i}", user_id=1) for i in range(2)])
 
     _, cursor = await RequestLogService(repo).list_for(
-        _user(1), RequestLogQuery(limit=2)
+        _user(1), Scope.OWN, RequestLogQuery(limit=2)
     )
 
     assert cursor is None
@@ -175,7 +180,7 @@ async def test_a_cursor_nobody_issued_is_refused() -> None:
 async def test_one_row_is_found_by_its_correlation_id() -> None:
     repo = FakeRequestLogRepository([_entry("wanted", user_id=1)])
 
-    entry = await RequestLogService(repo).get_for(_user(1), "wanted")
+    entry = await RequestLogService(repo).get_for(_user(1), Scope.OWN, "wanted")
 
     assert entry.request_id == "wanted"
 
@@ -184,7 +189,7 @@ async def test_another_users_row_is_not_found() -> None:
     repo = FakeRequestLogRepository([_entry("hidden", user_id=2)])
 
     with pytest.raises(NotFoundError):
-        await RequestLogService(repo).get_for(_user(1), "hidden")
+        await RequestLogService(repo).get_for(_user(1), Scope.OWN, "hidden")
 
 
 async def test_recording_stores_what_the_middleware_saw() -> None:

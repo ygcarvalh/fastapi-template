@@ -33,11 +33,13 @@ async def _purge(factory: SessionFactory, email: str) -> None:
 
 
 async def test_get_session_commits_when_the_request_succeeds(
-    bound_factory: SessionFactory,
+    bound_factory: SessionFactory, plain_role_id: int
 ) -> None:
     try:
         async for session in get_session():
-            session.add(User(email=COMMITTED_EMAIL, hashed_password="x"))
+            session.add(
+                User(email=COMMITTED_EMAIL, hashed_password="x", role_id=plain_role_id)
+            )
 
         assert await _stored_count(bound_factory, COMMITTED_EMAIL) == 1
     finally:
@@ -45,11 +47,13 @@ async def test_get_session_commits_when_the_request_succeeds(
 
 
 async def test_get_session_rolls_back_when_the_request_raises(
-    bound_factory: SessionFactory,
+    bound_factory: SessionFactory, plain_role_id: int
 ) -> None:
     sessions = get_session()
     session = await anext(sessions)
-    session.add(User(email=ROLLED_BACK_EMAIL, hashed_password="x"))
+    session.add(
+        User(email=ROLLED_BACK_EMAIL, hashed_password="x", role_id=plain_role_id)
+    )
 
     with pytest.raises(RuntimeError):
         await sessions.athrow(RuntimeError("request failed"))

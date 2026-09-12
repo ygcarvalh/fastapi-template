@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.request_log import RequestLog
+from app.models.role import Role
 from app.models.user import User, UserRole
 
 Rows = Callable[..., Awaitable[RequestLog]]
@@ -70,7 +71,9 @@ async def test_an_admin_sees_every_row(
         .scalars()
         .one()
     )
-    user.role = UserRole.ADMIN
+    user.role = (
+        await db_session.execute(select(Role).where(Role.name == UserRole.ADMIN))
+    ).scalar_one()
     await db_session.flush()
     await add_row("mine", user_id=user.id)
     await add_row("anonymous")

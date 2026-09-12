@@ -47,6 +47,14 @@ class UserRepository:
         )
         return result.scalar_one()
 
+    async def count_for_role(self, role_id: int) -> int:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(User)
+            .where(User.role_id == role_id, ACTIVE)
+        )
+        return result.scalar_one()
+
     async def exists_any(self) -> bool:
         result = await self._session.execute(select(select(User.id).exists()))
         return result.scalar_one()

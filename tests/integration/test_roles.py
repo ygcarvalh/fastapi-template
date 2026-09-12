@@ -5,6 +5,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.role import Role
 from app.models.user import User, UserRole
 
 ADMIN_EMAIL = "admin@example.com"
@@ -19,7 +20,10 @@ async def admin_client(
 ) -> AsyncGenerator[AsyncClient]:
     await user_factory(email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
     stored = await db_session.execute(select(User).where(User.email == ADMIN_EMAIL))
-    stored.scalar_one().role = UserRole.ADMIN
+    admin_role = (
+        await db_session.execute(select(Role).where(Role.name == UserRole.ADMIN))
+    ).scalar_one()
+    stored.scalar_one().role = admin_role
     await db_session.flush()
 
     login = await client.post(
