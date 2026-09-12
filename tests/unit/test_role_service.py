@@ -86,9 +86,7 @@ async def test_the_members_of_a_role_are_listed() -> None:
     role = await roles.get_by_name("user")
     assert role is not None
     held = User(id=7, email="holder@b.com", hashed_password="x", roles=[role])
-    service = RoleService(
-        roles, FakePermissionRepository(), FakeUserRepository([held])
-    )
+    service = RoleService(roles, FakePermissionRepository(), FakeUserRepository([held]))
 
     assert [member.id for member in await service.members(role.id)] == [7]
 
