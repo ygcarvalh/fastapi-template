@@ -10,7 +10,7 @@ PUBLIC_OPERATIONS = {
     ("get", "/metrics"),
 }
 
-MINIMUM_DISCOVERED_OPERATIONS = 16
+MINIMUM_DISCOVERED_OPERATIONS = 18
 
 
 def _operations() -> dict[tuple[str, str], bool]:
@@ -31,6 +31,7 @@ def test_the_inventory_actually_discovers_the_routes() -> None:
     assert ("patch", "/api/v1/users/me") in operations
     assert ("post", "/api/v1/auth/password") in operations
     assert ("get", "/api/v1/requests") in operations
+    assert ("get", "/api/v1/audit") in operations
 
 
 def test_every_route_is_protected_or_explicitly_public() -> None:

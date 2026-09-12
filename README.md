@@ -258,6 +258,30 @@ Prometheus metrics are served at `/metrics`, from `prometheus-fastapi-instrument
 
 `GET /api/v1/features` lists what is on, and it needs a token: a flag name can describe work nobody has announced.
 
+### The audit log table
+
+`request_logs` answers who called what. `audit_logs` answers what changed, and from what. One row per mapped insert, update or delete, with the old and new value of every column that moved.
+
+Nothing calls it. The rows are produced by SQLAlchemy session events registered on `Session` itself, so a service cannot forget to record a change — `before_flush` reads the attribute history while the old values are still in memory, `after_flush_postexec` resolves the keys the database just assigned, and the rows go in through Core on the connection the flush is already holding. That last part is why there is no recursion to guard against: the audit rows never enter the unit of work, so nothing sees them on the next flush.
+
+They are written inside the request's own transaction, which is the opposite of the choice `request_logs` makes, and deliberately so. A missing access-log line costs a line of telemetry; a missing audit row costs the record of a change that happened. If the insert fails, the request fails with it.
+
+Four tables stay out: `audit_logs` itself, `request_logs`, `refresh_tokens`, and `alembic_version`. Token rows churn on every login and say nothing a login does not. `hashed_password` and `token_hash` record *that* they changed and never what to — both sides read `***`. `created_at` and `updated_at` never appear: one is a server default and the other an `onupdate` expression, so neither has history anybody typed.
+
+Many-to-many links are covered. `user_roles` is a bare `Table`, but its inserts and deletes travel through `User.roles`, so the listener reads the collection history and files them as `link` and `unlink` with the role's name beside its key. A soft delete is filed as `soft_delete` rather than an ordinary update, and clearing `deleted_at` is a `restore`.
+
+`GET /api/v1/audit` pages through the trail and `GET /api/v1/audit/{id}` reads one, both behind `audit_log:read`, which only `superadmin` holds out of the box. A reader with `Scope.OWN` is pinned to their own rows, silently, the same way the request log narrows. Filters are `table_name`, `row_pk`, `action`, `actor_id`, `impersonator_id`, `request_id` and a `since`/`until` window; the `request_id` is the join back to `request_logs`. It is a `CursorPage` for the same reason the request log is.
+
+A value over 1000 characters is stored as its length rather than its contents, and a diff over 64 KB collapses to the list of field names with `truncated` set — an `items.description` can hold a megabyte, and a diff carries it twice.
+
+Retention is a cron job, the same shape as the request log's:
+
+```bash
+uv run python scripts/prune-audit-log.py 365    # keep a year
+```
+
+What it does not see is worth knowing. A Core-level `update()` or `delete()` bypasses the unit of work entirely, so the template refuses one against an audited table and names the table in the error; load the rows and change them through the session, or say `with audit_suppressed():` when the statement really is maintenance. Rows removed by a database-level `ON DELETE CASCADE` are deleted by PostgreSQL, not by the ORM, and `op.execute` in a migration produces no events at all. If "every mutation" ever has to be literal rather than "every mutation that goes through our services", the answer is a trigger reading `current_setting('app.actor_id', true)`, and the cost is redaction logic in PL/pgSQL.
+
 ### Searching the logs
 
 This template writes the logs and serves the metrics. Storing and searching them is somebody else's job, because one Loki per project also means one Grafana per project, and two queries every time an ID crosses a service boundary.

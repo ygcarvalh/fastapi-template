@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
     request_log_excluded_paths: str = "/health,/health/ready,/metrics"
     request_log_persist_enabled: bool = True
-    feature_flags: str = "items,request-log"
+    feature_flags: str = "items,request-log,audit-log"
+    audit_log_retention_days: int = 365
 
     @property
     def cors_origin_list(self) -> list[str]:

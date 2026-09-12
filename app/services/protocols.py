@@ -2,12 +2,14 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
+from app.models.audit_log import AuditLog
 from app.models.item import Item
 from app.models.refresh_token import RefreshToken
 from app.models.request_log import RequestLog
 from app.models.role import Permission, Role
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
+from app.schemas.audit_log import AuditLogQuery
 from app.schemas.request_log import RequestLogQuery
 
 
@@ -77,6 +79,18 @@ class RequestLogRepositoryProtocol(Protocol):
     async def list_page(self, query: RequestLogQuery) -> Sequence[RequestLog]: ...
 
     async def delete_batch_created_before(
+        self, cutoff: datetime, batch_size: int
+    ) -> int: ...
+
+
+class AuditLogRepositoryProtocol(Protocol):
+    async def create(self, entry: AuditLog) -> AuditLog: ...
+
+    async def list_page(self, query: AuditLogQuery) -> Sequence[AuditLog]: ...
+
+    async def get(self, entry_id: int) -> AuditLog | None: ...
+
+    async def delete_batch_occurred_before(
         self, cutoff: datetime, batch_size: int
     ) -> int: ...
 

@@ -10,6 +10,7 @@ from app.core.exceptions import NotFoundError
 class Feature(StrEnum):
     ITEMS = "items"
     REQUEST_LOG = "request-log"
+    AUDIT_LOG = "audit-log"
 
 
 def parse_features(raw: str) -> frozenset[str]:

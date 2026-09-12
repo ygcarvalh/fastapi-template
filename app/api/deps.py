@@ -12,12 +12,14 @@ from app.core.security import decode_access_token
 from app.db.session import get_session
 from app.models.role import Scope
 from app.models.user import User
+from app.repositories.audit_log_repo import AuditLogRepository
 from app.repositories.item_repo import ItemRepository
 from app.repositories.preferences_repo import PreferencesRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.request_log_repo import RequestLogRepository
 from app.repositories.role_repo import PermissionRepository, RoleRepository
 from app.repositories.user_repo import UserRepository
+from app.services.audit_log_service import AuditLogService
 from app.services.auth_service import AuthService
 from app.services.item_service import ItemService
 from app.services.preferences_service import PreferencesService
@@ -69,6 +71,13 @@ def get_request_log_service(session: SessionDep) -> RequestLogService:
 
 
 RequestLogServiceDep = Annotated[RequestLogService, Depends(get_request_log_service)]
+
+
+def get_audit_log_service(session: SessionDep) -> AuditLogService:
+    return AuditLogService(AuditLogRepository(session))
+
+
+AuditLogServiceDep = Annotated[AuditLogService, Depends(get_audit_log_service)]
 
 
 def get_preferences_service(session: SessionDep) -> PreferencesService:

@@ -7,6 +7,7 @@ USERS = "users"
 ROLES = "roles"
 FEATURE_FLAGS = "feature_flags"
 SETTINGS = "settings"
+AUDIT_LOG = "audit_log"
 
 READ = "read"
 CREATE = "create"
@@ -39,6 +40,7 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
         (FEATURE_FLAGS, READ, Scope.ALL),
         (FEATURE_FLAGS, UPDATE, Scope.ALL),
         (SETTINGS, READ, Scope.ALL),
+        (AUDIT_LOG, READ, Scope.ALL),
     ],
 }
 

@@ -41,7 +41,10 @@ async def test_a_signed_in_caller_reads_the_enabled_flags(
     response = await auth_client.get("/api/v1/features")
 
     assert response.status_code == 200
-    assert response.json() == {"flags": ["items", "request-log"], "inherited": None}
+    assert response.json() == {
+        "flags": ["audit-log", "items", "request-log"],
+        "inherited": None,
+    }
 
 
 async def test_a_disabled_feature_is_absent(only_items: AsyncClient) -> None:
