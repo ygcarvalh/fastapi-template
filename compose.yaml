@@ -32,7 +32,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       REQUEST_LOG_PERSIST_ENABLED: ${REQUEST_LOG_PERSIST_ENABLED:-true}
-      FEATURE_FLAGS: ${FEATURE_FLAGS:-items,request-log}
+      FEATURE_FLAGS: ${FEATURE_FLAGS:-items,request-log,audit-log}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-1048576}
       # Which proxies uvicorn believes about X-Forwarded-For. Empty means
