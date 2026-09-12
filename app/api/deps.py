@@ -117,8 +117,6 @@ async def _load(service: UserService, subject: str) -> User:
         raise AuthError(INVALID_CREDENTIALS) from exc
 
 
-# Re-checked on every request rather than only when the token was minted, so a
-# permission taken away lands at once instead of when the token expires.
 async def get_actor(
     request: Request,
     token: Annotated[str, Depends(oauth2_scheme)],

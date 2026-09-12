@@ -48,8 +48,6 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
 }
 
 
-# Acting as somebody else must never be a way to widen what they may do, so
-# the reach that impersonation could hand over is closed for its duration.
 BLOCKED_WHILE_IMPERSONATING: frozenset[tuple[str, str]] = frozenset(
     {
         (ROLES, CREATE),
@@ -83,8 +81,6 @@ def scope_for(user: User, resource: str, action: str) -> Scope | None:
     return _widest(user).get((resource, action))
 
 
-# Reaching an account that outranks you is the same escalation whether you
-# borrow it or close it, so both answer to one rule.
 def outranks(actor: User, target: User) -> bool:
     return is_superuser(actor) or not is_superuser(target)
 

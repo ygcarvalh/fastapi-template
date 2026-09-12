@@ -108,8 +108,6 @@ class UserService:
             raise ForbiddenError("Password is incorrect")
         await self._close(user)
 
-    # Closing your own account is the route that asks for a password; this one
-    # is somebody else closing it, and a password nobody knows cannot gate it.
     async def remove(self, actor: User, user_id: int) -> None:
         target = await self.get(user_id)
         if target.id == actor.id:

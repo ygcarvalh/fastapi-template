@@ -84,8 +84,6 @@ class AuthService:
             raise AuthError(INVALID_CREDENTIALS)
         return TokenPair(create_access_token(str(user.id)), refresh_token)
 
-    # No refresh token comes with it, and stopping does not revoke it: the
-    # token is stateless, so the short lifetime is what bounds the exposure.
     async def impersonate(self, actor: User, target: User) -> ImpersonationGrant:
         if target.id == actor.id:
             raise ForbiddenError("An account cannot impersonate itself")

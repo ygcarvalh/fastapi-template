@@ -67,7 +67,6 @@ async def logout(
     await service.logout(data.refresh_token)
 
 
-# Declared before the parameterised route, or "stop" arrives as a user id.
 @private_router.post("/impersonate/stop", status_code=status.HTTP_204_NO_CONTENT)
 async def stop_impersonating(actor: CurrentActor, service: AuthServiceDep) -> None:
     if actor.impersonator is not None:

@@ -79,8 +79,6 @@ def create_refresh_token(subject: str) -> str:
     )
 
 
-# A token carrying an impersonation lifetime of its own, and no refresh token
-# to renew it with: leaving as somebody else is a matter of dropping it.
 def create_impersonation_token(subject: str, impersonator: str) -> str:
     settings = get_settings()
     return _create_token(
@@ -122,8 +120,6 @@ def decode_access_token(token: str) -> AccessClaims:
     return AccessClaims(str(payload["sub"]), _impersonator_of(payload))
 
 
-# An impersonation token must never buy a session of its own, so a refresh
-# token carrying the claim is refused rather than quietly honoured.
 def decode_refresh_token(token: str) -> str:
     payload = _decode(token, REFRESH_TOKEN_TYPE)
     if payload.get(IMPERSONATOR_CLAIM) is not None:

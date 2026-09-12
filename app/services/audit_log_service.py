@@ -14,7 +14,6 @@ class AuditLogService:
     def __init__(self, repo: AuditLogRepositoryProtocol) -> None:
         self._repo = repo
 
-    # Scoping silently rather than refusing keeps whose ids exist to ourselves.
     def _visible(
         self, viewer: User, scope: Scope, query: AuditLogQuery
     ) -> AuditLogQuery:
