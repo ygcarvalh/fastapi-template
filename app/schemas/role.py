@@ -29,6 +29,10 @@ class RoleWrite(BaseModel):
         return trimmed
 
 
+class MemberAssignment(BaseModel):
+    user_id: int
+
+
 class GrantRead(BaseModel):
     resource: str
     action: str

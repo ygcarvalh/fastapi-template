@@ -50,7 +50,7 @@ class UserService:
             email=data.email,
             name=data.name,
             hashed_password=hash_password(data.password),
-            role=await self._role(UserRole.ADMIN if first else UserRole.USER),
+            roles=[await self._role(UserRole.ADMIN if first else UserRole.USER)],
         )
         try:
             return await self._repo.create(user)
@@ -77,11 +77,22 @@ class UserService:
         except IntegrityError as error:
             raise _as_conflict(error) from error
 
-    async def set_role(self, actor: User, user_id: int, role_name: str) -> User:
-        if actor.id == user_id:
-            raise ForbiddenError("You cannot change your own role")
+    async def add_role(self, user_id: int, role_name: str) -> User:
         user = await self.get(user_id)
-        user.role = await self._role(role_name)
+        role = await self._role(role_name)
+        if any(held.name == role.name for held in user.roles):
+            return user
+        user.roles.append(role)
+        return await self._repo.save(user)
+
+    async def remove_role(self, actor: User, user_id: int, role_name: str) -> User:
+        if actor.id == user_id and role_name == UserRole.ADMIN:
+            raise ForbiddenError("You cannot drop your own superadmin role")
+        user = await self.get(user_id)
+        role = await self._role(role_name)
+        if not any(held.name == role.name for held in user.roles):
+            return user
+        user.roles = [held for held in user.roles if held.name != role.name]
         return await self._repo.save(user)
 
     async def list_all(self, limit: int, offset: int) -> tuple[Sequence[User], int]:

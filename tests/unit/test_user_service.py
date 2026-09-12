@@ -16,6 +16,10 @@ from tests.unit.fakes import (
 )
 
 
+def _admin() -> User:
+    return User(id=1, email="admin@b.com", hashed_password="x", roles=[admin_role()])
+
+
 async def test_register_creates_user_when_email_free() -> None:
     repo = FakeUserRepository()
     service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
@@ -45,7 +49,7 @@ async def test_the_account_that_opens_an_empty_database_is_an_administrator() ->
 
     first = await service.register(UserCreate(email="a@b.com", password="secret123"))
 
-    assert first.role.name == UserRole.ADMIN
+    assert [role.name for role in first.roles] == [UserRole.ADMIN]
 
 
 async def test_every_later_account_registers_as_a_plain_user() -> None:
@@ -57,7 +61,7 @@ async def test_every_later_account_registers_as_a_plain_user() -> None:
         UserCreate(email="second@b.com", password="secret123")
     )
 
-    assert second.role.name == UserRole.USER
+    assert [role.name for role in second.roles] == [UserRole.USER]
 
 
 async def test_a_closed_deployment_does_not_hand_admin_to_the_next_registration() -> (
@@ -71,41 +75,114 @@ async def test_a_closed_deployment_does_not_hand_admin_to_the_next_registration(
 
     again = await service.register(UserCreate(email="next@b.com", password="secret123"))
 
-    assert again.role.name == UserRole.USER
+    assert [role.name for role in again.roles] == [UserRole.USER]
 
 
-async def test_an_administrator_promotes_another_account() -> None:
-    admin = User(id=1, email="admin@b.com", hashed_password="x", role=admin_role())
-    target = User(id=2, email="other@b.com", hashed_password="x", role=user_role())
+async def test_an_administrator_adds_a_role_to_another_account() -> None:
+    admin = _admin()
+    target = User(id=2, email="other@b.com", hashed_password="x", roles=[user_role()])
     repo = FakeUserRepository([admin, target])
     service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
 
-    result = await service.set_role(admin, 2, UserRole.ADMIN)
+    result = await service.add_role(2, UserRole.ADMIN)
 
-    assert result.role.name == UserRole.ADMIN
+    assert [role.name for role in result.roles] == [UserRole.USER, UserRole.ADMIN]
     assert repo.saved == [target]
 
 
-async def test_an_administrator_cannot_change_their_own_role() -> None:
-    admin = User(id=1, email="admin@b.com", hashed_password="x", role=admin_role())
+async def test_adding_a_role_the_account_already_holds_changes_nothing() -> None:
+    target = User(id=2, email="other@b.com", hashed_password="x", roles=[user_role()])
+    repo = FakeUserRepository([_admin(), target])
+    service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
+
+    result = await service.add_role(2, UserRole.USER)
+
+    assert [role.name for role in result.roles] == [UserRole.USER]
+    assert repo.saved == []
+
+
+async def test_an_administrator_takes_a_role_off_another_account() -> None:
+    target = User(
+        id=2,
+        email="other@b.com",
+        hashed_password="x",
+        roles=[user_role(), admin_role()],
+    )
+    repo = FakeUserRepository([_admin(), target])
+    service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
+
+    result = await service.remove_role(_admin(), 2, UserRole.ADMIN)
+
+    assert [role.name for role in result.roles] == [UserRole.USER]
+    assert repo.saved == [target]
+
+
+async def test_an_account_may_end_up_holding_no_role_at_all() -> None:
+    target = User(id=2, email="other@b.com", hashed_password="x", roles=[user_role()])
+    repo = FakeUserRepository([_admin(), target])
+    service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
+
+    result = await service.remove_role(_admin(), 2, UserRole.USER)
+
+    assert result.roles == []
+
+
+async def test_removing_a_role_the_account_never_held_changes_nothing() -> None:
+    target = User(id=2, email="other@b.com", hashed_password="x", roles=[user_role()])
+    repo = FakeUserRepository([_admin(), target])
+    service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
+
+    result = await service.remove_role(_admin(), 2, UserRole.ADMIN)
+
+    assert [role.name for role in result.roles] == [UserRole.USER]
+    assert repo.saved == []
+
+
+async def test_an_administrator_cannot_drop_their_own_superadmin_role() -> None:
+    admin = _admin()
     repo = FakeUserRepository([admin])
     service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
 
     with pytest.raises(ForbiddenError):
-        await service.set_role(admin, 1, UserRole.USER)
+        await service.remove_role(admin, 1, UserRole.ADMIN)
 
-    assert admin.role.name == UserRole.ADMIN
+    assert [role.name for role in admin.roles] == [UserRole.ADMIN]
     assert repo.saved == []
 
 
-async def test_changing_the_role_of_a_missing_account_raises() -> None:
-    admin = User(id=1, email="admin@b.com", hashed_password="x", role=admin_role())
+async def test_an_administrator_may_drop_another_role_of_their_own() -> None:
+    admin = User(
+        id=1,
+        email="admin@b.com",
+        hashed_password="x",
+        roles=[admin_role(), user_role()],
+    )
+    repo = FakeUserRepository([admin])
+    service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
+
+    result = await service.remove_role(admin, 1, UserRole.USER)
+
+    assert [role.name for role in result.roles] == [UserRole.ADMIN]
+
+
+async def test_changing_the_roles_of_a_missing_account_raises() -> None:
+    admin = _admin()
     service = UserService(
         FakeUserRepository([admin]), FakeItemRepository(), FakeRoleRepository()
     )
 
     with pytest.raises(NotFoundError):
-        await service.set_role(admin, 404, UserRole.ADMIN)
+        await service.add_role(404, UserRole.ADMIN)
+
+
+async def test_granting_a_role_nobody_defined_raises() -> None:
+    admin = _admin()
+    service = UserService(
+        FakeUserRepository([admin]), FakeItemRepository(), FakeRoleRepository()
+    )
+
+    with pytest.raises(NotFoundError):
+        await service.add_role(1, "ghost")
 
 
 async def test_get_missing_user_raises() -> None:

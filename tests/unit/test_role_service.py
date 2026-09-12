@@ -3,6 +3,7 @@ import pytest
 from app.core.authorization import ITEMS, READ, USERS
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.models.role import Scope
+from app.models.user import User
 from app.schemas.role import GrantWrite, RoleWrite
 from app.services.role_service import RoleService
 from tests.unit.fakes import (
@@ -78,6 +79,25 @@ async def test_a_role_the_deployment_ships_cannot_be_deleted() -> None:
 
     with pytest.raises(ForbiddenError):
         await service.delete(role.id)
+
+
+async def test_the_members_of_a_role_are_listed() -> None:
+    roles = FakeRoleRepository()
+    role = await roles.get_by_name("user")
+    assert role is not None
+    held = User(id=7, email="holder@b.com", hashed_password="x", roles=[role])
+    service = RoleService(
+        roles, FakePermissionRepository(), FakeUserRepository([held])
+    )
+
+    assert [member.id for member in await service.members(role.id)] == [7]
+
+
+async def test_listing_the_members_of_a_missing_role_raises() -> None:
+    service, _roles, _users = setup()
+
+    with pytest.raises(NotFoundError):
+        await service.members(404)
 
 
 async def test_a_role_that_still_has_accounts_cannot_be_deleted() -> None:

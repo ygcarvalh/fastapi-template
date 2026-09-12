@@ -112,14 +112,18 @@ The API stores the choice; it does not interpret it. `theme` is one of `light`, 
 
 Every table except `request_logs` inherits `TimestampMixin` from `app/db/mixins.py`, which supplies `created_at` and an `updated_at` that PostgreSQL refreshes on write. Both come from `now()`, which returns the transaction start time, so a row created and modified inside one transaction carries identical values. They diverge once the writes land in separate transactions, which is what a request per change gives you. A request-log row is never edited, so it carries `created_at` alone.
 
-`User.role` is a `String(20)` mapped to the `UserRole` string enum rather than a PostgreSQL enum type. Adding a role is then an ordinary code change instead of an `ALTER TYPE` in a migration. Guard a route with the `require_role` factory:
+Permissions live in rows, not in code. A `permissions` row is a `resource` plus an `action`; a `role_permissions` row attaches one of them to a role with a `scope` of `own` or `all`; and `user_roles` attaches roles to accounts. Guard a route with the `require_permission` factory, which hands the route the scope it may read with:
 
 ```python
-@private_router.get("", dependencies=[require_role(UserRole.ADMIN)])
+@private_router.get("", dependencies=[require_permission(USERS, READ)])
 async def list_users(...): ...
 ```
 
-A caller without the role gets 403 and `"detail": "Insufficient permissions"` inside the error envelope, while a caller without a token still gets 401, because the router-level `RequireAuth` runs first. New accounts are created as `user`; promote deliberately.
+A caller without the permission gets 403 and `"detail": "Insufficient permissions"` inside the error envelope, while a caller without a token still gets 401, because the router-level `RequireAuth` runs first.
+
+An account holds any number of roles and the grants add up, with the wider scope winning when two roles name the same permission. `superadmin` is structural: `scope_for` answers `all` for it without reading a grant row, so a resource added later is reachable on the day it ships. Holding no role at all is allowed and means holding no permission — the account still authenticates and reaches `/users/me`, its profile and its preferences, since none of those sit behind `require_permission`. The one removal the API refuses is a superadmin dropping their own `superadmin` role, which would lock the deployment out of its own administration screens.
+
+`POST /api/v1/users/{id}/roles` and `DELETE /api/v1/users/{id}/roles/{name}` work an account's list from the account side; `GET`, `POST /api/v1/roles/{id}/users` and `DELETE /api/v1/roles/{id}/users/{user_id}` work the same rows from the role side. The first account to register on an empty database becomes the superadmin; every later one registers as `user`.
 
 ## Tokens
 

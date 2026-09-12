@@ -3,7 +3,6 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,7 +16,6 @@ from app.db.base import Base
 from app.db.seed import seed_roles
 from app.db.session import get_session
 from app.main import app
-from app.models.role import Role
 
 
 @pytest.fixture(autouse=True)
@@ -42,13 +40,6 @@ async def engine() -> AsyncGenerator[AsyncEngine]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
-
-
-@pytest_asyncio.fixture(scope="session")
-async def plain_role_id(engine: AsyncEngine) -> int:
-    async with AsyncSession(bind=engine) as session:
-        result = await session.execute(select(Role.id).where(Role.name == "user"))
-        return result.scalar_one()
 
 
 @pytest_asyncio.fixture

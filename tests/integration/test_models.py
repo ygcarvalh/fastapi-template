@@ -5,8 +5,8 @@ from app.models.item import Item
 from app.models.user import User
 
 
-async def test_user_owns_items(db_session: AsyncSession, plain_role_id: int) -> None:
-    user = User(email="owner@example.com", hashed_password="x", role_id=plain_role_id)
+async def test_user_owns_items(db_session: AsyncSession) -> None:
+    user = User(email="owner@example.com", hashed_password="x")
     user.items.append(Item(title="First"))
     db_session.add(user)
     await db_session.flush()

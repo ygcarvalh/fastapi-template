@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Annotated, Self
 
@@ -90,7 +91,7 @@ class AccountDeactivate(BaseModel):
     password: str
 
 
-class UserRoleUpdate(BaseModel):
+class RoleAssignment(BaseModel):
     role: str
 
 
@@ -106,11 +107,13 @@ class UserRead(BaseModel):
     id: int
     email: EmailStr
     name: str | None
-    role: str
+    roles: list[str]
     created_at: datetime
     updated_at: datetime
 
-    @field_validator("role", mode="before")
+    @field_validator("roles", mode="before")
     @classmethod
-    def read_the_role_name(cls, value: object) -> object:
-        return value.name if isinstance(value, Role) else value
+    def read_the_role_names(cls, value: object) -> object:
+        if not isinstance(value, Iterable) or isinstance(value, str):
+            return value
+        return [item.name if isinstance(item, Role) else item for item in value]

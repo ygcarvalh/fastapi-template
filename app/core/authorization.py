@@ -40,20 +40,27 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
 
 
 def is_superuser(user: User) -> bool:
-    return user.role.name == UserRole.ADMIN
+    return any(role.name == UserRole.ADMIN for role in user.roles)
+
+
+def _widest(user: User) -> dict[tuple[str, str], Scope]:
+    widest: dict[tuple[str, str], Scope] = {}
+    for role in user.roles:
+        for grant in role.grants:
+            key = (grant.permission.resource, grant.permission.action)
+            if widest.get(key) != Scope.ALL:
+                widest[key] = grant.scope
+    return widest
 
 
 def scope_for(user: User, resource: str, action: str) -> Scope | None:
     if is_superuser(user):
         return Scope.ALL
-    for grant in user.role.grants:
-        if grant.permission.resource == resource and grant.permission.action == action:
-            return grant.scope
-    return None
+    return _widest(user).get((resource, action))
 
 
 def granted(user: User) -> list[tuple[str, str, Scope]]:
     return [
-        (grant.permission.resource, grant.permission.action, grant.scope)
-        for grant in user.role.grants
+        (resource, action, scope)
+        for (resource, action), scope in sorted(_widest(user).items())
     ]

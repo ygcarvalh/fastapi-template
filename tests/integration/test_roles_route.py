@@ -23,7 +23,7 @@ async def admin_client(
     admin_role = (
         await db_session.execute(select(Role).where(Role.name == UserRole.ADMIN))
     ).scalar_one()
-    stored.scalar_one().role = admin_role
+    stored.scalar_one().roles = [admin_role]
     await db_session.flush()
 
     login = await client.post(
@@ -116,8 +116,8 @@ async def test_a_role_with_accounts_is_kept(
         await admin_client.post("/api/v1/roles", json={"name": "finance", "grants": []})
     ).json()
     holder = await user_factory(email="holder@example.com", password=PASSWORD)
-    await admin_client.patch(
-        f"/api/v1/users/{holder['id']}/role", json={"role": "finance"}
+    await admin_client.post(
+        f"/api/v1/users/{holder['id']}/roles", json={"role": "finance"}
     )
 
     assert (
@@ -135,7 +135,7 @@ async def test_managing_roles_requires_the_permission(
     assert (await auth_client.get("/api/v1/permissions")).status_code == 403
 
 
-async def test_an_account_is_moved_to_a_role_that_was_just_created(
+async def test_an_account_joins_a_role_that_was_just_created(
     admin_client: AsyncClient,
     user_factory: Callable[..., Awaitable[dict[str, object]]],
 ) -> None:
@@ -148,12 +148,98 @@ async def test_an_account_is_moved_to_a_role_that_was_just_created(
     )
     other = await user_factory(email="moved@example.com", password=PASSWORD)
 
-    response = await admin_client.patch(
-        f"/api/v1/users/{other['id']}/role", json={"role": "finance"}
+    response = await admin_client.post(
+        f"/api/v1/users/{other['id']}/roles", json={"role": "finance"}
     )
 
     assert response.status_code == 200
-    assert response.json()["role"] == "finance"
+    assert response.json()["roles"] == ["finance", "user"]
+
+
+async def test_the_members_of_a_role_are_listed(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    created = (
+        await admin_client.post("/api/v1/roles", json={"name": "finance", "grants": []})
+    ).json()
+    holder = await user_factory(email="member@example.com", password=PASSWORD)
+    await admin_client.post(
+        f"/api/v1/roles/{created['id']}/users", json={"user_id": holder["id"]}
+    )
+
+    response = await admin_client.get(f"/api/v1/roles/{created['id']}/users")
+
+    assert response.status_code == 200
+    assert [row["email"] for row in response.json()] == ["member@example.com"]
+
+
+async def test_a_member_added_from_the_role_shows_up_on_the_account(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    created = (
+        await admin_client.post("/api/v1/roles", json={"name": "finance", "grants": []})
+    ).json()
+    holder = await user_factory(email="joined@example.com", password=PASSWORD)
+
+    await admin_client.post(
+        f"/api/v1/roles/{created['id']}/users", json={"user_id": holder["id"]}
+    )
+
+    account = await admin_client.get(f"/api/v1/users/{holder['id']}")
+    assert account.json()["roles"] == ["finance", "user"]
+
+
+async def test_a_member_is_taken_off_a_role(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    created = (
+        await admin_client.post("/api/v1/roles", json={"name": "finance", "grants": []})
+    ).json()
+    holder = await user_factory(email="leaving@example.com", password=PASSWORD)
+    await admin_client.post(
+        f"/api/v1/roles/{created['id']}/users", json={"user_id": holder["id"]}
+    )
+
+    response = await admin_client.delete(
+        f"/api/v1/roles/{created['id']}/users/{holder['id']}"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["roles"] == ["user"]
+    assert (await admin_client.get(f"/api/v1/roles/{created['id']}/users")).json() == []
+
+
+async def test_an_administrator_cannot_leave_the_superadmin_role_from_its_own_screen(
+    admin_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    stored = await db_session.execute(select(User).where(User.email == ADMIN_EMAIL))
+    admin_id = stored.scalar_one().id
+    roles = (await admin_client.get("/api/v1/roles")).json()
+    role_id = next(role["id"] for role in roles if role["name"] == "superadmin")
+
+    response = await admin_client.delete(f"/api/v1/roles/{role_id}/users/{admin_id}")
+
+    assert response.status_code == 403
+
+
+async def test_the_members_of_a_missing_role_are_a_404(
+    admin_client: AsyncClient,
+) -> None:
+    assert (await admin_client.get("/api/v1/roles/404/users")).status_code == 404
+
+
+async def test_managing_the_members_of_a_role_requires_the_permission(
+    auth_client: AsyncClient,
+) -> None:
+    assert (await auth_client.get("/api/v1/roles/1/users")).status_code == 403
+    assert (
+        await auth_client.post("/api/v1/roles/1/users", json={"user_id": 1})
+    ).status_code == 403
+    assert (await auth_client.delete("/api/v1/roles/1/users/1")).status_code == 403
 
 
 async def test_the_administrator_role_cannot_be_narrowed(

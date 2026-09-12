@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.role import user_roles
 from app.models.user import User
 
 ACTIVE = User.deleted_at.is_(None)
@@ -51,9 +52,19 @@ class UserRepository:
         result = await self._session.execute(
             select(func.count())
             .select_from(User)
-            .where(User.role_id == role_id, ACTIVE)
+            .join(user_roles, user_roles.c.user_id == User.id)
+            .where(user_roles.c.role_id == role_id, ACTIVE)
         )
         return result.scalar_one()
+
+    async def list_for_role(self, role_id: int) -> Sequence[User]:
+        result = await self._session.execute(
+            select(User)
+            .join(user_roles, user_roles.c.user_id == User.id)
+            .where(user_roles.c.role_id == role_id, ACTIVE)
+            .order_by(User.id)
+        )
+        return result.scalars().all()
 
     async def exists_any(self) -> bool:
         result = await self._session.execute(select(select(User.id).exists()))

@@ -23,7 +23,7 @@ async def admin_client(
     admin_role = (
         await db_session.execute(select(Role).where(Role.name == UserRole.ADMIN))
     ).scalar_one()
-    stored.scalar_one().role = admin_role
+    stored.scalar_one().roles = [admin_role]
     await db_session.flush()
 
     login = await client.post(
@@ -43,7 +43,7 @@ async def test_the_first_account_of_a_deployment_is_an_administrator(
         "/api/v1/users", json={"email": "founder@example.com", "password": "secret123"}
     )
 
-    assert created.json()["role"] == "superadmin"
+    assert created.json()["roles"] == ["superadmin"]
 
 
 async def test_later_accounts_are_not_administrators(
@@ -56,7 +56,7 @@ async def test_later_accounts_are_not_administrators(
         "/api/v1/users", json={"email": "plain@example.com", "password": "secret123"}
     )
 
-    assert created.json()["role"] == "user"
+    assert created.json()["roles"] == ["user"]
 
 
 async def test_listing_users_requires_the_admin_role(auth_client: AsyncClient) -> None:
@@ -113,34 +113,103 @@ async def test_an_administrator_promotes_another_account(
 ) -> None:
     other = await user_factory(email="other@example.com", password="secret123")
 
-    response = await admin_client.patch(
-        f"/api/v1/users/{other['id']}/role", json={"role": "superadmin"}
+    response = await admin_client.post(
+        f"/api/v1/users/{other['id']}/roles", json={"role": "superadmin"}
     )
 
     assert response.status_code == 200
-    assert response.json()["role"] == "superadmin"
+    assert response.json()["roles"] == ["superadmin", "user"]
 
 
-async def test_an_administrator_cannot_change_their_own_role(
+async def test_a_role_is_taken_off_an_account(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    other = await user_factory(email="other@example.com", password="secret123")
+    await admin_client.post(
+        f"/api/v1/users/{other['id']}/roles", json={"role": "superadmin"}
+    )
+
+    response = await admin_client.delete(f"/api/v1/users/{other['id']}/roles/user")
+
+    assert response.status_code == 200
+    assert response.json()["roles"] == ["superadmin"]
+
+
+async def test_an_account_may_be_left_without_a_role(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    other = await user_factory(email="stripped@example.com", password="secret123")
+
+    response = await admin_client.delete(f"/api/v1/users/{other['id']}/roles/user")
+
+    assert response.status_code == 200
+    assert response.json()["roles"] == []
+
+
+async def test_granting_the_same_role_twice_is_harmless(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    other = await user_factory(email="twice@example.com", password="secret123")
+
+    await admin_client.post(f"/api/v1/users/{other['id']}/roles", json={"role": "user"})
+    response = await admin_client.post(
+        f"/api/v1/users/{other['id']}/roles", json={"role": "user"}
+    )
+
+    assert response.json()["roles"] == ["user"]
+
+
+async def test_an_administrator_cannot_drop_their_own_superadmin_role(
     admin_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
     stored = await db_session.execute(select(User).where(User.email == ADMIN_EMAIL))
     admin_id = stored.scalar_one().id
 
-    response = await admin_client.patch(
-        f"/api/v1/users/{admin_id}/role", json={"role": "user"}
+    response = await admin_client.delete(f"/api/v1/users/{admin_id}/roles/superadmin")
+
+    assert response.status_code == 403
+
+
+async def test_an_administrator_drops_another_role_of_their_own(
+    admin_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    stored = await db_session.execute(select(User).where(User.email == ADMIN_EMAIL))
+    admin_id = stored.scalar_one().id
+    await admin_client.post(f"/api/v1/users/{admin_id}/roles", json={"role": "user"})
+
+    response = await admin_client.delete(f"/api/v1/users/{admin_id}/roles/user")
+
+    assert response.status_code == 200
+    assert response.json()["roles"] == ["superadmin"]
+
+
+async def test_granting_a_role_nobody_defined_is_a_404(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    other = await user_factory(email="ghosted@example.com", password="secret123")
+
+    response = await admin_client.post(
+        f"/api/v1/users/{other['id']}/roles", json={"role": "ghost"}
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
-async def test_changing_a_role_requires_the_admin_role(
+async def test_changing_the_roles_of_an_account_requires_the_permission(
     auth_client: AsyncClient,
 ) -> None:
-    response = await auth_client.patch("/api/v1/users/1/role", json={"role": "superadmin"})
-
-    assert response.status_code == 403
+    assert (
+        await auth_client.post("/api/v1/users/1/roles", json={"role": "superadmin"})
+    ).status_code == 403
+    assert (
+        await auth_client.delete("/api/v1/users/1/roles/superadmin")
+    ).status_code == 403
 
 
 async def test_an_administrator_reads_the_features_of_another_account(

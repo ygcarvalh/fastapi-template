@@ -71,9 +71,11 @@ async def test_an_admin_sees_every_row(
         .scalars()
         .one()
     )
-    user.role = (
-        await db_session.execute(select(Role).where(Role.name == UserRole.ADMIN))
-    ).scalar_one()
+    user.roles = [
+        (
+            await db_session.execute(select(Role).where(Role.name == UserRole.ADMIN))
+        ).scalar_one()
+    ]
     await db_session.flush()
     await add_row("mine", user_id=user.id)
     await add_row("anonymous")

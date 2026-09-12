@@ -8,9 +8,9 @@ BUMPED_EMAIL = "bumped@example.com"
 
 
 async def test_new_rows_get_both_timestamps(
-    db_session: AsyncSession, plain_role_id: int
+    db_session: AsyncSession,
 ) -> None:
-    user = User(email=STAMPED_EMAIL, hashed_password="x", role_id=plain_role_id)
+    user = User(email=STAMPED_EMAIL, hashed_password="x")
     db_session.add(user)
     await db_session.flush()
 
@@ -19,13 +19,13 @@ async def test_new_rows_get_both_timestamps(
 
 
 async def test_updated_at_advances_on_a_later_transaction(
-    engine: AsyncEngine, plain_role_id: int
+    engine: AsyncEngine,
 ) -> None:
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     try:
         async with factory() as session:
-            user = User(email=BUMPED_EMAIL, hashed_password="x", role_id=plain_role_id)
+            user = User(email=BUMPED_EMAIL, hashed_password="x")
             session.add(user)
             await session.commit()
             created_at = user.created_at

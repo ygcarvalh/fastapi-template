@@ -42,7 +42,14 @@ class FakeUserRepository:
         return len(self._users)
 
     async def count_for_role(self, role_id: int) -> int:
-        return self.role_counts.get(role_id, 0)
+        return self.role_counts.get(role_id, len(await self.list_for_role(role_id)))
+
+    async def list_for_role(self, role_id: int) -> Sequence[User]:
+        return [
+            user
+            for user in self._users
+            if any(role.id == role_id for role in user.roles)
+        ]
 
     async def exists_any(self) -> bool:
         return bool(self._users)

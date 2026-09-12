@@ -26,9 +26,9 @@ from app.schemas.preferences import (
 from app.schemas.user import (
     AccountDeactivate,
     GrantRead,
+    RoleAssignment,
     UserCreate,
     UserRead,
-    UserRoleUpdate,
     UserUpdate,
 )
 
@@ -146,14 +146,23 @@ async def update_user_features(
     return AccountFeaturesRead(features=stored.features, available=available_features())
 
 
-@private_router.patch(
-    "/{user_id}/role", dependencies=[require_permission(USERS, UPDATE)]
+@private_router.post(
+    "/{user_id}/roles", dependencies=[require_permission(USERS, UPDATE)]
 )
-async def update_user_role(
+async def add_user_role(
+    user_id: int, data: RoleAssignment, service: UserServiceDep
+) -> UserRead:
+    return UserRead.model_validate(await service.add_role(user_id, data.role))
+
+
+@private_router.delete(
+    "/{user_id}/roles/{role_name}", dependencies=[require_permission(USERS, UPDATE)]
+)
+async def remove_user_role(
     user_id: int,
-    data: UserRoleUpdate,
+    role_name: str,
     current_user: CurrentUser,
     service: UserServiceDep,
 ) -> UserRead:
-    user = await service.set_role(current_user, user_id, data.role)
+    user = await service.remove_role(current_user, user_id, role_name)
     return UserRead.model_validate(user)

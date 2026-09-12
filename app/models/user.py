@@ -1,12 +1,12 @@
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Index, String, text
+from sqlalchemy import Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.mixins import SoftDeleteMixin, TimestampMixin
-from app.models.role import Role
+from app.models.role import Role, user_roles
 
 if TYPE_CHECKING:
     from app.models.item import Item
@@ -34,8 +34,9 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     email: Mapped[str] = mapped_column(String(255))
     name: Mapped[str | None] = mapped_column(String(NAME_LENGTH), default=None)
     hashed_password: Mapped[str] = mapped_column(String(255))
-    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"))
-    role: Mapped[Role] = relationship(lazy="selectin")
+    roles: Mapped[list[Role]] = relationship(
+        secondary=user_roles, lazy="selectin", order_by=Role.name
+    )
 
     items: Mapped[list["Item"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"

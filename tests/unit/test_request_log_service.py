@@ -43,7 +43,7 @@ def _user(user_id: int) -> User:
         id=user_id,
         email=f"user{user_id}@example.com",
         hashed_password="x",
-        role=user_role(),
+        roles=[user_role()],
     )
 
 

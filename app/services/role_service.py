@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.models.role import Permission, Role, RolePermission
-from app.models.user import UserRole
+from app.models.user import User, UserRole
 from app.schemas.role import RoleWrite
 from app.services.protocols import (
     PermissionRepositoryProtocol,
@@ -30,6 +30,10 @@ class RoleService:
 
     async def list_permissions(self) -> Sequence[Permission]:
         return await self._permissions.list_all()
+
+    async def members(self, role_id: int) -> Sequence[User]:
+        role = await self.get(role_id)
+        return await self._users.list_for_role(role.id)
 
     async def get(self, role_id: int) -> Role:
         role = await self._roles.get(role_id)
