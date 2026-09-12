@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import NotFoundError
 from app.models.audit_log import AuditLog
 from app.models.role import Scope
@@ -37,7 +38,9 @@ class AuditLogService:
     async def get_for(self, viewer: User, scope: Scope, entry_id: int) -> AuditLog:
         entry = await self._repo.get(entry_id)
         if entry is None or (scope != Scope.ALL and entry.actor_id != viewer.id):
-            raise NotFoundError("Audit entry not found")
+            raise NotFoundError(
+                "Audit entry not found", code=ErrorCode.AUDIT_LOG_NOT_FOUND
+            )
         return entry
 
     async def prune_batch(self, retention: timedelta, batch_size: int) -> int:

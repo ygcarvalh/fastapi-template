@@ -12,8 +12,9 @@ from app.core.authorization import (
     may_impersonate,
     scope_for,
 )
-from app.core.exceptions import AuthError, ForbiddenError, NotFoundError
-from app.core.security import INVALID_CREDENTIALS, decode_access_token
+from app.core.error_codes import ErrorCode
+from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.security import decode_access_token, invalid_credentials
 from app.db.session import get_session
 from app.models.role import Scope
 from app.models.user import User
@@ -110,11 +111,11 @@ async def _load(service: UserService, subject: str) -> User:
     try:
         user_id = int(subject)
     except ValueError as exc:
-        raise AuthError(INVALID_CREDENTIALS) from exc
+        raise invalid_credentials() from exc
     try:
         return await service.get(user_id)
     except NotFoundError as exc:
-        raise AuthError(INVALID_CREDENTIALS) from exc
+        raise invalid_credentials() from exc
 
 
 async def get_actor(
@@ -130,7 +131,10 @@ async def get_actor(
         else await _load(service, claims.impersonator)
     )
     if impersonator is not None and not may_impersonate(impersonator, user):
-        raise ForbiddenError("Impersonation is no longer allowed")
+        raise ForbiddenError(
+            "Impersonation is no longer allowed",
+            code=ErrorCode.AUTH_IMPERSONATION_REVOKED,
+        )
 
     actor = Actor(user=user, impersonator=impersonator)
     request.state.user_id = user.id
@@ -156,7 +160,10 @@ RequireAuth = Depends(get_current_user)
 
 async def forbid_impersonation(actor: CurrentActor) -> None:
     if actor.impersonator is not None:
-        raise ForbiddenError("Not allowed while impersonating")
+        raise ForbiddenError(
+            "Not allowed while impersonating",
+            code=ErrorCode.AUTH_IMPERSONATION_BLOCKED,
+        )
 
 
 ForbidImpersonation = Depends(forbid_impersonation)
@@ -168,10 +175,16 @@ def require_permission(resource: str, action: str) -> params.Depends:
             actor.impersonator is not None
             and (resource, action) in BLOCKED_WHILE_IMPERSONATING
         ):
-            raise ForbiddenError("Not allowed while impersonating")
+            raise ForbiddenError(
+                "Not allowed while impersonating",
+                code=ErrorCode.AUTH_IMPERSONATION_BLOCKED,
+            )
         scope = scope_for(actor.user, resource, action)
         if scope is None:
-            raise ForbiddenError("Insufficient permissions")
+            raise ForbiddenError(
+                "Insufficient permissions",
+                code=ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+            )
         return scope
 
     dependency: params.Depends = Depends(guard)

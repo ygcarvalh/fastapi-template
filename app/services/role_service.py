@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserRole
@@ -38,12 +39,12 @@ class RoleService:
     async def get(self, role_id: int) -> Role:
         role = await self._roles.get(role_id)
         if role is None:
-            raise NotFoundError("Role not found")
+            raise NotFoundError("Role not found", code=ErrorCode.ROLE_NOT_FOUND)
         return role
 
     async def create(self, data: RoleWrite) -> Role:
         if await self._roles.get_by_name(data.name) is not None:
-            raise ConflictError(NAME_TAKEN)
+            raise ConflictError(NAME_TAKEN, code=ErrorCode.ROLE_NAME_TAKEN)
         role = Role(name=data.name, features=data.features)
         role.grants = await self._grants(data)
         return await self._roles.create(role)
@@ -51,10 +52,13 @@ class RoleService:
     async def update(self, role_id: int, data: RoleWrite) -> Role:
         role = await self.get(role_id)
         if role.name == UserRole.ADMIN:
-            raise ForbiddenError("The administrator role always holds everything")
+            raise ForbiddenError(
+                "The administrator role always holds everything",
+                code=ErrorCode.ROLE_ADMIN_IMMUTABLE,
+            )
         taken = await self._roles.get_by_name(data.name)
         if taken is not None and taken.id != role.id:
-            raise ConflictError(NAME_TAKEN)
+            raise ConflictError(NAME_TAKEN, code=ErrorCode.ROLE_NAME_TAKEN)
         role.name = data.name
         role.features = data.features
         role.grants = await self._grants(data)
@@ -63,9 +67,13 @@ class RoleService:
     async def delete(self, role_id: int) -> None:
         role = await self.get(role_id)
         if role.name in BUILT_IN:
-            raise ForbiddenError("This role is part of the deployment")
+            raise ForbiddenError(
+                "This role is part of the deployment", code=ErrorCode.ROLE_BUILT_IN
+            )
         if await self._users.count_for_role(role.id) > 0:
-            raise ConflictError("This role still has accounts")
+            raise ConflictError(
+                "This role still has accounts", code=ErrorCode.ROLE_HAS_ACCOUNTS
+            )
         await self._roles.delete(role)
 
     async def _grants(self, data: RoleWrite) -> list[RolePermission]:
@@ -73,6 +81,8 @@ class RoleService:
         for wanted in data.grants:
             permission = await self._permissions.get(wanted.resource, wanted.action)
             if permission is None:
-                raise NotFoundError("Permission not found")
+                raise NotFoundError(
+                    "Permission not found", code=ErrorCode.PERMISSION_NOT_FOUND
+                )
             grants.append(RolePermission(permission=permission, scope=wanted.scope))
         return grants

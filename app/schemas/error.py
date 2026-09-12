@@ -1,23 +1,28 @@
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ValidationDetail(BaseModel):
     type: str
     loc: list[str | int]
     msg: str
+    ctx: dict[str, str | int] = Field(default_factory=dict)
 
 
 class ErrorResponse(BaseModel):
     detail: str
     message: str
+    code: str
+    params: dict[str, str | int] = Field(default_factory=dict)
     request_id: str | None = None
 
 
 class ValidationErrorResponse(BaseModel):
     detail: list[ValidationDetail]
     message: str
+    code: str
+    params: dict[str, str | int] = Field(default_factory=dict)
     request_id: str | None = None
 
 

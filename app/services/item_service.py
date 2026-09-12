@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import NotFoundError
 from app.models.item import Item
 from app.schemas.item import ItemCreate, ItemUpdate
@@ -24,7 +25,7 @@ class ItemService:
     async def get_for_owner(self, item_id: int, owner_id: int) -> Item:
         item = await self._repo.get_for_owner(item_id, owner_id)
         if item is None:
-            raise NotFoundError("Item not found")
+            raise NotFoundError("Item not found", code=ErrorCode.ITEM_NOT_FOUND)
         return item
 
     async def update(self, item_id: int, owner_id: int, data: ItemUpdate) -> Item:

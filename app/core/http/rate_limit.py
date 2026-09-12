@@ -5,6 +5,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
+from app.core.error_codes import ErrorCode
 from app.core.http.errors import error_response
 
 RATE_LIMIT_DETAIL = "Too many requests"
@@ -25,6 +26,7 @@ def register_rate_limiting(app: FastAPI) -> None:
             status_code=429,
             detail=RATE_LIMIT_DETAIL,
             message=RATE_LIMIT_MESSAGE,
+            code=ErrorCode.RATE_LIMITED,
         )
 
     app.add_exception_handler(RateLimitExceeded, handle_rate_limit_exceeded)

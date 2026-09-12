@@ -8,6 +8,7 @@ from pwdlib import PasswordHash
 from pwdlib.hashers.bcrypt import BcryptHasher
 
 from app.core.config import get_settings
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import AuthError
 
 password_hash = PasswordHash((BcryptHasher(),))
@@ -18,6 +19,11 @@ ACCESS_TOKEN_TYPE: TokenType = "access"
 REFRESH_TOKEN_TYPE: TokenType = "refresh"
 
 INVALID_CREDENTIALS = "Invalid authentication credentials"
+
+
+def invalid_credentials() -> AuthError:
+    return AuthError(INVALID_CREDENTIALS, code=ErrorCode.AUTH_INVALID_CREDENTIALS)
+
 
 IMPERSONATOR_CLAIM = "act"
 
@@ -96,13 +102,13 @@ def _decode(token: str, expected_type: TokenType) -> dict[str, Any]:
             token, settings.secret_key, algorithms=[settings.jwt_algorithm]
         )
     except jwt.PyJWTError as exc:
-        raise AuthError(INVALID_CREDENTIALS) from exc
+        raise invalid_credentials() from exc
 
     if payload.get("typ") != expected_type:
-        raise AuthError(INVALID_CREDENTIALS)
+        raise invalid_credentials()
 
     if payload.get("sub") is None:
-        raise AuthError(INVALID_CREDENTIALS)
+        raise invalid_credentials()
     return payload
 
 
@@ -111,7 +117,7 @@ def _impersonator_of(payload: dict[str, Any]) -> str | None:
     if actor is None:
         return None
     if not isinstance(actor, dict) or actor.get("sub") is None:
-        raise AuthError(INVALID_CREDENTIALS)
+        raise invalid_credentials()
     return str(actor["sub"])
 
 
@@ -123,5 +129,5 @@ def decode_access_token(token: str) -> AccessClaims:
 def decode_refresh_token(token: str) -> str:
     payload = _decode(token, REFRESH_TOKEN_TYPE)
     if payload.get(IMPERSONATOR_CLAIM) is not None:
-        raise AuthError(INVALID_CREDENTIALS)
+        raise invalid_credentials()
     return str(payload["sub"])

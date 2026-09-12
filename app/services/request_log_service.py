@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import NotFoundError
 from app.models.request_log import RequestLog
 from app.models.role import Scope
@@ -44,7 +45,9 @@ class RequestLogService:
         )
         entry = next(iter(await self._repo.list_page(scoped)), None)
         if entry is None:
-            raise NotFoundError("Request not found")
+            raise NotFoundError(
+                "Request not found", code=ErrorCode.REQUEST_LOG_NOT_FOUND
+            )
         return entry
 
     async def prune_batch(self, retention: timedelta, batch_size: int) -> int:
