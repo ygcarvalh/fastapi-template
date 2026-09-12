@@ -64,7 +64,7 @@ async def test_a_role_is_created_with_the_grants_it_was_given(
 
 async def test_a_role_name_cannot_repeat(admin_client: AsyncClient) -> None:
     response = await admin_client.post(
-        "/api/v1/roles", json={"name": "admin", "grants": []}
+        "/api/v1/roles", json={"name": "superadmin", "grants": []}
     )
 
     assert response.status_code == 409
@@ -103,7 +103,7 @@ async def test_an_unused_role_is_deleted(admin_client: AsyncClient) -> None:
 
 async def test_a_role_the_deployment_ships_is_kept(admin_client: AsyncClient) -> None:
     roles = (await admin_client.get("/api/v1/roles")).json()
-    admin_id = next(role["id"] for role in roles if role["name"] == "admin")
+    admin_id = next(role["id"] for role in roles if role["name"] == "superadmin")
 
     assert (await admin_client.delete(f"/api/v1/roles/{admin_id}")).status_code == 403
 
@@ -154,3 +154,29 @@ async def test_an_account_is_moved_to_a_role_that_was_just_created(
 
     assert response.status_code == 200
     assert response.json()["role"] == "finance"
+
+
+async def test_the_administrator_role_cannot_be_narrowed(
+    admin_client: AsyncClient,
+) -> None:
+    roles = (await admin_client.get("/api/v1/roles")).json()
+    admin_id = next(role["id"] for role in roles if role["name"] == "superadmin")
+
+    response = await admin_client.put(
+        f"/api/v1/roles/{admin_id}", json={"name": "superadmin", "grants": []}
+    )
+
+    assert response.status_code == 403
+
+
+async def test_an_administrator_reads_the_whole_catalog_as_its_own_permissions(
+    admin_client: AsyncClient,
+) -> None:
+    catalog = (await admin_client.get("/api/v1/permissions")).json()
+
+    held = (await admin_client.get("/api/v1/users/me/permissions")).json()
+
+    assert {(row["resource"], row["action"]) for row in held} == {
+        (row["resource"], row["action"]) for row in catalog
+    }
+    assert {row["scope"] for row in held} == {"all"}

@@ -6,15 +6,23 @@ from app.api.deps import (
     CurrentUser,
     PreferencesServiceDep,
     RequireAuth,
+    RoleServiceDep,
     UserServiceDep,
     require_permission,
 )
-from app.core.authorization import READ, UPDATE, USERS, granted
+from app.core.authorization import READ, UPDATE, USERS, granted, is_superuser
 from app.core.config import get_settings
+from app.core.features import available_features
 from app.core.http.rate_limit import limiter
+from app.models.role import Scope
 from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import Page, PageParams
-from app.schemas.preferences import PreferencesRead, PreferencesUpdate
+from app.schemas.preferences import (
+    AccountFeaturesRead,
+    AccountFeaturesUpdate,
+    PreferencesRead,
+    PreferencesUpdate,
+)
 from app.schemas.user import (
     AccountDeactivate,
     GrantRead,
@@ -77,7 +85,18 @@ async def deactivate_me(
 
 
 @private_router.get("/me/permissions")
-async def read_my_permissions(current_user: CurrentUser) -> list[GrantRead]:
+async def read_my_permissions(
+    current_user: CurrentUser, roles: RoleServiceDep
+) -> list[GrantRead]:
+    if is_superuser(current_user):
+        return [
+            GrantRead(
+                resource=permission.resource,
+                action=permission.action,
+                scope=Scope.ALL,
+            )
+            for permission in await roles.list_permissions()
+        ]
     return [
         GrantRead(resource=resource, action=action, scope=scope)
         for resource, action, scope in granted(current_user)
@@ -101,6 +120,30 @@ async def list_users(
 @private_router.get("/{user_id}", dependencies=[require_permission(USERS, READ)])
 async def read_user(user_id: int, service: UserServiceDep) -> UserRead:
     return UserRead.model_validate(await service.get(user_id))
+
+
+@private_router.get(
+    "/{user_id}/features", dependencies=[require_permission(USERS, READ)]
+)
+async def read_user_features(
+    user_id: int, users: UserServiceDep, preferences: PreferencesServiceDep
+) -> AccountFeaturesRead:
+    stored = await preferences.get(await users.get(user_id))
+    return AccountFeaturesRead(features=stored.features, available=available_features())
+
+
+@private_router.put(
+    "/{user_id}/features", dependencies=[require_permission(USERS, UPDATE)]
+)
+async def update_user_features(
+    user_id: int,
+    data: AccountFeaturesUpdate,
+    users: UserServiceDep,
+    preferences: PreferencesServiceDep,
+) -> AccountFeaturesRead:
+    target = await users.get(user_id)
+    stored = await preferences.update(target, PreferencesUpdate(features=data.features))
+    return AccountFeaturesRead(features=stored.features, available=available_features())
 
 
 @private_router.patch(

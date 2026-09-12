@@ -43,7 +43,7 @@ async def test_the_first_account_of_a_deployment_is_an_administrator(
         "/api/v1/users", json={"email": "founder@example.com", "password": "secret123"}
     )
 
-    assert created.json()["role"] == "admin"
+    assert created.json()["role"] == "superadmin"
 
 
 async def test_later_accounts_are_not_administrators(
@@ -114,11 +114,11 @@ async def test_an_administrator_promotes_another_account(
     other = await user_factory(email="other@example.com", password="secret123")
 
     response = await admin_client.patch(
-        f"/api/v1/users/{other['id']}/role", json={"role": "admin"}
+        f"/api/v1/users/{other['id']}/role", json={"role": "superadmin"}
     )
 
     assert response.status_code == 200
-    assert response.json()["role"] == "admin"
+    assert response.json()["role"] == "superadmin"
 
 
 async def test_an_administrator_cannot_change_their_own_role(
@@ -138,6 +138,62 @@ async def test_an_administrator_cannot_change_their_own_role(
 async def test_changing_a_role_requires_the_admin_role(
     auth_client: AsyncClient,
 ) -> None:
-    response = await auth_client.patch("/api/v1/users/1/role", json={"role": "admin"})
+    response = await auth_client.patch("/api/v1/users/1/role", json={"role": "superadmin"})
 
     assert response.status_code == 403
+
+
+async def test_an_administrator_reads_the_features_of_another_account(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    other = await user_factory(email="flagged@example.com", password="secret123")
+
+    response = await admin_client.get(f"/api/v1/users/{other['id']}/features")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["features"] is None
+    assert "items" in body["available"]
+
+
+async def test_an_administrator_narrows_the_features_of_another_account(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    other = await user_factory(email="flagged@example.com", password="secret123")
+
+    response = await admin_client.put(
+        f"/api/v1/users/{other['id']}/features", json={"features": "items"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["features"] == "items"
+
+    again = await admin_client.get(f"/api/v1/users/{other['id']}/features")
+    assert again.json()["features"] == "items"
+
+
+async def test_an_administrator_hands_an_account_back_to_the_defaults(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    other = await user_factory(email="flagged@example.com", password="secret123")
+    await admin_client.put(
+        f"/api/v1/users/{other['id']}/features", json={"features": "items"}
+    )
+
+    response = await admin_client.put(
+        f"/api/v1/users/{other['id']}/features", json={"features": None}
+    )
+
+    assert response.json()["features"] is None
+
+
+async def test_changing_the_features_of_an_account_requires_the_permission(
+    auth_client: AsyncClient,
+) -> None:
+    assert (await auth_client.get("/api/v1/users/1/features")).status_code == 403
+    assert (
+        await auth_client.put("/api/v1/users/1/features", json={"features": "items"})
+    ).status_code == 403

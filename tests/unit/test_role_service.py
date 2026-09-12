@@ -38,7 +38,7 @@ async def test_a_role_name_is_taken_only_once() -> None:
     service, _roles, _users = setup()
 
     with pytest.raises(ConflictError):
-        await service.create(RoleWrite(name="admin", grants=[]))
+        await service.create(RoleWrite(name="superadmin", grants=[]))
 
 
 async def test_a_grant_nobody_defined_is_refused() -> None:
@@ -73,7 +73,7 @@ async def test_updating_a_role_replaces_its_grants() -> None:
 
 async def test_a_role_the_deployment_ships_cannot_be_deleted() -> None:
     service, roles, _users = setup()
-    role = await roles.get_by_name("admin")
+    role = await roles.get_by_name("superadmin")
     assert role is not None
 
     with pytest.raises(ForbiddenError):

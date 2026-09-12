@@ -241,3 +241,16 @@ def test_a_cursor_that_did_not_come_from_here_is_refused(value: str) -> None:
 def test_a_query_without_a_cursor_is_fine() -> None:
     assert RequestLogQuery().cursor is None
     assert RequestLogQuery(cursor=None).cursor is None
+
+
+async def test_the_method_filter_narrows_the_page() -> None:
+    repo = FakeRequestLogRepository(
+        [_entry("read", user_id=1), _entry("write", user_id=1)]
+    )
+    repo._entries[1].method = "POST"
+
+    entries, _ = await RequestLogService(repo).list_for(
+        _user(1), Scope.OWN, RequestLogQuery(method="POST")
+    )
+
+    assert [entry.request_id for entry in entries] == ["write"]

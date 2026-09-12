@@ -24,6 +24,15 @@ class PreferencesRead(BaseModel):
     features: str | None
 
 
+class AccountFeaturesRead(BaseModel):
+    features: str | None
+    available: list[str]
+
+
+class AccountFeaturesUpdate(BaseModel):
+    features: Features | None = None
+
+
 class PreferencesUpdate(BaseModel):
     locale: Locale | None = None
     theme: Theme | None = None

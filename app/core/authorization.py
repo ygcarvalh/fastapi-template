@@ -1,5 +1,5 @@
 from app.models.role import Scope
-from app.models.user import User
+from app.models.user import User, UserRole
 
 ITEMS = "items"
 REQUEST_LOG = "request_log"
@@ -22,7 +22,7 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
         (REQUEST_LOG, READ, Scope.OWN),
         (FEATURE_FLAGS, READ, Scope.ALL),
     ],
-    "admin": [
+    "superadmin": [
         (ITEMS, READ, Scope.OWN),
         (ITEMS, CREATE, Scope.OWN),
         (ITEMS, UPDATE, Scope.OWN),
@@ -39,7 +39,13 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
 }
 
 
+def is_superuser(user: User) -> bool:
+    return user.role.name == UserRole.ADMIN
+
+
 def scope_for(user: User, resource: str, action: str) -> Scope | None:
+    if is_superuser(user):
+        return Scope.ALL
     for grant in user.role.grants:
         if grant.permission.resource == resource and grant.permission.action == action:
             return grant.scope

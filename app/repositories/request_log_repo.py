@@ -31,6 +31,8 @@ def _where(query: RequestLogQuery) -> list[ColumnElement[bool]]:
     if query.outcome is not None:
         low, high = OUTCOME_RANGES[query.outcome]
         conditions.append(RequestLog.status_code.between(low, high))
+    if query.method:
+        conditions.append(RequestLog.method == query.method)
     if query.path:
         conditions.append(RequestLog.path.startswith(query.path, autoescape=True))
     if query.request_id:

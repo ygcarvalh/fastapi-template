@@ -76,6 +76,7 @@ class RequestLogQuery(BaseModel):
     limit: Annotated[int, Field(ge=1, le=100)] = 20
     cursor: Annotated[str, Field(pattern=CURSOR_REGEX)] | None = None
     outcome: Outcome | None = None
+    method: Annotated[str, Field(pattern=r"^[A-Z]{3,10}$")] | None = None
     # A prefix, not a substring: a leading wildcard cannot use the index.
     path: Annotated[str, Field(max_length=PATH_LENGTH)] | None = None
     request_id: Annotated[str, Field(pattern=REQUEST_ID_REGEX)] | None = None

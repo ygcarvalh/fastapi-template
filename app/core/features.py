@@ -24,6 +24,10 @@ def is_enabled(feature: Feature) -> bool:
     return feature in enabled_features()
 
 
+def available_features() -> list[str]:
+    return sorted(feature.value for feature in enabled_features())
+
+
 # A disabled route answers 404 rather than 403, so a flag that is off does not
 # announce that the feature exists.
 def require_feature(feature: Feature) -> params.Depends:

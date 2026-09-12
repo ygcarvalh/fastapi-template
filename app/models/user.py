@@ -16,7 +16,7 @@ NAME_LENGTH = 120
 
 class UserRole(StrEnum):
     USER = "user"
-    ADMIN = "admin"
+    ADMIN = "superadmin"
 
 
 class User(Base, TimestampMixin, SoftDeleteMixin):

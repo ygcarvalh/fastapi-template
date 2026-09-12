@@ -46,6 +46,8 @@ class RoleService:
 
     async def update(self, role_id: int, data: RoleWrite) -> Role:
         role = await self.get(role_id)
+        if role.name == UserRole.ADMIN:
+            raise ForbiddenError("The administrator role always holds everything")
         taken = await self._roles.get_by_name(data.name)
         if taken is not None and taken.id != role.id:
             raise ConflictError(NAME_TAKEN)

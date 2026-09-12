@@ -117,7 +117,7 @@ def role_with(name: str, grants: Sequence[tuple[str, str, Scope]]) -> Role:
 
 
 def admin_role() -> Role:
-    return role_with("admin", BASE_ROLES["admin"])
+    return role_with("superadmin", BASE_ROLES["superadmin"])
 
 
 def user_role() -> Role:
@@ -188,6 +188,8 @@ class FakeRequestLogRepository:
                 for entry in entries
                 if outcome_for(entry.status_code) == query.outcome
             ]
+        if query.method:
+            entries = [entry for entry in entries if entry.method == query.method]
         if query.path:
             entries = [entry for entry in entries if entry.path.startswith(query.path)]
         if query.request_id:
