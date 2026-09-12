@@ -16,7 +16,11 @@ from app.core.security import (
 from app.models.user import User
 from app.schemas.user import PasswordChange
 from app.services.auth_service import AuthService
-from tests.unit.fakes import FakeRefreshTokenRepository, FakeUserRepository
+from tests.unit.fakes import (
+    FakeAuditLogRepository,
+    FakeRefreshTokenRepository,
+    FakeUserRepository,
+)
 
 NOW = datetime.now(UTC)
 EMAIL = "someone@example.com"
@@ -30,7 +34,11 @@ def _registered_user() -> User:
 
 
 def _service(users: Sequence[User] = ()) -> AuthService:
-    return AuthService(FakeUserRepository(users), FakeRefreshTokenRepository())
+    return AuthService(
+        FakeUserRepository(users),
+        FakeRefreshTokenRepository(),
+        FakeAuditLogRepository(),
+    )
 
 
 async def _time_rejected_login(users: Sequence[User]) -> tuple[float, str]:
@@ -46,7 +54,7 @@ async def test_authenticate_returns_a_token_pair_for_the_right_password() -> Non
 
     pair = await service.authenticate(EMAIL, PASSWORD)
 
-    assert decode_access_token(pair.access_token) == "7"
+    assert decode_access_token(pair.access_token).subject == "7"
     assert decode_refresh_token(pair.refresh_token) == "7"
 
 
@@ -56,7 +64,7 @@ async def test_a_stored_refresh_token_buys_a_new_access_token() -> None:
 
     refreshed = await service.refresh(issued.refresh_token)
 
-    assert decode_access_token(refreshed.access_token) == "7"
+    assert decode_access_token(refreshed.access_token).subject == "7"
     assert refreshed.refresh_token == issued.refresh_token
 
 
@@ -102,7 +110,7 @@ async def test_revoking_sessions_closes_every_token_at_once() -> None:
 async def test_a_token_stored_against_another_account_is_refused() -> None:
     user = _registered_user()
     tokens = FakeRefreshTokenRepository()
-    service = AuthService(FakeUserRepository([user]), tokens)
+    service = AuthService(FakeUserRepository([user]), tokens, FakeAuditLogRepository())
     issued = await service.authenticate(EMAIL, PASSWORD)
     stored = await tokens.get_active(hash_refresh_token(issued.refresh_token), NOW)
     assert stored is not None
@@ -122,12 +130,12 @@ async def test_refresh_rejects_a_non_numeric_subject() -> None:
 async def test_refresh_rejects_a_subject_with_no_matching_user() -> None:
     users = FakeUserRepository()
     tokens = FakeRefreshTokenRepository()
-    service = AuthService(users, tokens)
+    service = AuthService(users, tokens, FakeAuditLogRepository())
     ghost = User(email="ghost@example.com", hashed_password=hash_password(PASSWORD))
     ghost.id = 404
-    issued = await AuthService(FakeUserRepository([ghost]), tokens).authenticate(
-        "ghost@example.com", PASSWORD
-    )
+    issued = await AuthService(
+        FakeUserRepository([ghost]), tokens, FakeAuditLogRepository()
+    ).authenticate("ghost@example.com", PASSWORD)
 
     with pytest.raises(AuthError):
         await service.refresh(issued.refresh_token)

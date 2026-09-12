@@ -2,11 +2,15 @@ from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import NamedTuple
 
+from app.core.audit.events import IMPERSONATION, audit_event
+from app.core.audit.policy import AuditAction
+from app.core.authorization import may_impersonate
 from app.core.config import get_settings
 from app.core.exceptions import AuthError, ForbiddenError
 from app.core.security import (
     INVALID_CREDENTIALS,
     create_access_token,
+    create_impersonation_token,
     create_refresh_token,
     decode_refresh_token,
     hash_password,
@@ -17,14 +21,22 @@ from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.schemas.user import PasswordChange, normalize_email
 from app.services.protocols import (
+    AuditLogRepositoryProtocol,
     RefreshTokenRepositoryProtocol,
     UserRepositoryProtocol,
 )
+
+SECONDS_PER_MINUTE = 60
 
 
 class TokenPair(NamedTuple):
     access_token: str
     refresh_token: str
+
+
+class ImpersonationGrant(NamedTuple):
+    access_token: str
+    expires_in: int
 
 
 @lru_cache(maxsize=1)
@@ -34,10 +46,14 @@ def _hash_for_absent_user() -> str:
 
 class AuthService:
     def __init__(
-        self, users: UserRepositoryProtocol, tokens: RefreshTokenRepositoryProtocol
+        self,
+        users: UserRepositoryProtocol,
+        tokens: RefreshTokenRepositoryProtocol,
+        audit: AuditLogRepositoryProtocol,
     ) -> None:
         self._users = users
         self._tokens = tokens
+        self._audit = audit
 
     async def authenticate(self, email: str, password: str) -> TokenPair:
         user = await self._users.get_by_email(normalize_email(email))
@@ -67,6 +83,36 @@ class AuthService:
         if user is None:
             raise AuthError(INVALID_CREDENTIALS)
         return TokenPair(create_access_token(str(user.id)), refresh_token)
+
+    # No refresh token comes with it, and stopping does not revoke it: the
+    # token is stateless, so the short lifetime is what bounds the exposure.
+    async def impersonate(self, actor: User, target: User) -> ImpersonationGrant:
+        if target.id == actor.id:
+            raise ForbiddenError("An account cannot impersonate itself")
+        if not may_impersonate(actor, target):
+            raise ForbiddenError("Insufficient permissions")
+
+        minutes = get_settings().impersonation_token_expire_minutes
+        await self._record(AuditAction.IMPERSONATE_START, target, {"old": None})
+        return ImpersonationGrant(
+            create_impersonation_token(str(target.id), str(actor.id)),
+            minutes * SECONDS_PER_MINUTE,
+        )
+
+    async def stop_impersonating(self, target: User) -> None:
+        await self._record(AuditAction.IMPERSONATE_STOP, target, {"new": None})
+
+    async def _record(
+        self, action: AuditAction, target: User, side: dict[str, object]
+    ) -> None:
+        await self._audit.create(
+            audit_event(
+                IMPERSONATION,
+                action,
+                row_pk=str(target.id),
+                changes={"target": {"old": None, "new": target.id, **side}},
+            )
+        )
 
     async def logout(self, refresh_token: str) -> None:
         await self._tokens.revoke(hash_refresh_token(refresh_token), datetime.now(UTC))

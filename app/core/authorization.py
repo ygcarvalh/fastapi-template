@@ -13,6 +13,7 @@ READ = "read"
 CREATE = "create"
 UPDATE = "update"
 DELETE = "delete"
+IMPERSONATE = "impersonate"
 
 
 BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
@@ -33,6 +34,7 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
         (REQUEST_LOG, READ, Scope.ALL),
         (USERS, READ, Scope.ALL),
         (USERS, UPDATE, Scope.ALL),
+        (USERS, IMPERSONATE, Scope.ALL),
         (ROLES, READ, Scope.ALL),
         (ROLES, CREATE, Scope.ALL),
         (ROLES, UPDATE, Scope.ALL),
@@ -43,6 +45,20 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
         (AUDIT_LOG, READ, Scope.ALL),
     ],
 }
+
+
+# Acting as somebody else must never be a way to widen what they may do, so
+# the reach that impersonation could hand over is closed for its duration.
+BLOCKED_WHILE_IMPERSONATING: frozenset[tuple[str, str]] = frozenset(
+    {
+        (ROLES, CREATE),
+        (ROLES, UPDATE),
+        (ROLES, DELETE),
+        (USERS, UPDATE),
+        (USERS, IMPERSONATE),
+        (FEATURE_FLAGS, UPDATE),
+    }
+)
 
 
 def is_superuser(user: User) -> bool:
@@ -63,6 +79,12 @@ def scope_for(user: User, resource: str, action: str) -> Scope | None:
     if is_superuser(user):
         return Scope.ALL
     return _widest(user).get((resource, action))
+
+
+def may_impersonate(actor: User, target: User) -> bool:
+    if scope_for(actor, USERS, IMPERSONATE) is None:
+        return False
+    return is_superuser(actor) or not is_superuser(target)
 
 
 def granted(user: User) -> list[tuple[str, str, Scope]]:

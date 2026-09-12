@@ -22,7 +22,7 @@ def test_password_hash_round_trip() -> None:
 
 def test_access_token_round_trip() -> None:
     token = create_access_token("42")
-    assert decode_access_token(token) == "42"
+    assert decode_access_token(token).subject == "42"
 
 
 def test_decode_invalid_token_raises() -> None:

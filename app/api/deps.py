@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Annotated
 
 import structlog
@@ -6,9 +7,13 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit.context import bind_actor
-from app.core.authorization import scope_for
+from app.core.authorization import (
+    BLOCKED_WHILE_IMPERSONATING,
+    may_impersonate,
+    scope_for,
+)
 from app.core.exceptions import AuthError, ForbiddenError, NotFoundError
-from app.core.security import decode_access_token
+from app.core.security import INVALID_CREDENTIALS, decode_access_token
 from app.db.session import get_session
 from app.models.role import Scope
 from app.models.user import User
@@ -33,7 +38,11 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 def get_auth_service(session: SessionDep) -> AuthService:
-    return AuthService(UserRepository(session), RefreshTokenRepository(session))
+    return AuthService(
+        UserRepository(session),
+        RefreshTokenRepository(session),
+        AuditLogRepository(session),
+    )
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
@@ -87,24 +96,59 @@ def get_preferences_service(session: SessionDep) -> PreferencesService:
 PreferencesServiceDep = Annotated[PreferencesService, Depends(get_preferences_service)]
 
 
-async def get_current_user(
-    request: Request,
-    token: Annotated[str, Depends(oauth2_scheme)],
-    service: UserServiceDep,
-) -> User:
-    subject = decode_access_token(token)
+@dataclass(frozen=True)
+class Actor:
+    user: User
+    impersonator: User | None
+
+    @property
+    def impersonator_id(self) -> int | None:
+        return None if self.impersonator is None else self.impersonator.id
+
+
+async def _load(service: UserService, subject: str) -> User:
     try:
         user_id = int(subject)
     except ValueError as exc:
-        raise AuthError("Invalid authentication credentials") from exc
+        raise AuthError(INVALID_CREDENTIALS) from exc
     try:
-        user = await service.get(user_id)
+        return await service.get(user_id)
     except NotFoundError as exc:
-        raise AuthError("Invalid authentication credentials") from exc
+        raise AuthError(INVALID_CREDENTIALS) from exc
+
+
+# Re-checked on every request rather than only when the token was minted, so a
+# permission taken away lands at once instead of when the token expires.
+async def get_actor(
+    request: Request,
+    token: Annotated[str, Depends(oauth2_scheme)],
+    service: UserServiceDep,
+) -> Actor:
+    claims = decode_access_token(token)
+    user = await _load(service, claims.subject)
+    impersonator = (
+        None
+        if claims.impersonator is None
+        else await _load(service, claims.impersonator)
+    )
+    if impersonator is not None and not may_impersonate(impersonator, user):
+        raise ForbiddenError("Impersonation is no longer allowed")
+
+    actor = Actor(user=user, impersonator=impersonator)
     request.state.user_id = user.id
-    structlog.contextvars.bind_contextvars(user_id=user.id)
-    bind_actor(user.id)
-    return user
+    request.state.impersonator_id = actor.impersonator_id
+    structlog.contextvars.bind_contextvars(
+        user_id=user.id, impersonator_id=actor.impersonator_id
+    )
+    bind_actor(user.id, actor.impersonator_id)
+    return actor
+
+
+CurrentActor = Annotated[Actor, Depends(get_actor)]
+
+
+async def get_current_user(actor: CurrentActor) -> User:
+    return actor.user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -112,9 +156,22 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 RequireAuth = Depends(get_current_user)
 
 
+async def forbid_impersonation(actor: CurrentActor) -> None:
+    if actor.impersonator is not None:
+        raise ForbiddenError("Not allowed while impersonating")
+
+
+ForbidImpersonation = Depends(forbid_impersonation)
+
+
 def require_permission(resource: str, action: str) -> params.Depends:
-    async def guard(current_user: CurrentUser) -> Scope:
-        scope = scope_for(current_user, resource, action)
+    async def guard(actor: CurrentActor) -> Scope:
+        if (
+            actor.impersonator is not None
+            and (resource, action) in BLOCKED_WHILE_IMPERSONATING
+        ):
+            raise ForbiddenError("Not allowed while impersonating")
+        scope = scope_for(actor.user, resource, action)
         if scope is None:
             raise ForbiddenError("Insufficient permissions")
         return scope

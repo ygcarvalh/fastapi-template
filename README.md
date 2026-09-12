@@ -143,6 +143,20 @@ Deactivating an account does cut off refreshing straight away, because `refresh`
 
 `PATCH /api/v1/users/me` updates the display name and the address, answering 409 when the address is taken.
 
+## Impersonation
+
+`POST /api/v1/auth/impersonate/{user_id}` hands back an access token that reads the system as somebody else, so a support account can see what a user reports rather than guess at it. `POST /api/v1/auth/impersonate/stop` closes it.
+
+Who may do it is a row, not a role name. The permission is `users:impersonate`, `superadmin` holds it out of the box, and any role can be given it. Two rules narrow it anyway: an account cannot impersonate itself, and an account that is not a superadmin can never impersonate one. Both are re-checked on every request rather than only when the token was minted, so a permission taken away lands at once.
+
+The token carries the target as `sub` and the real account under `act`, the actor claim from RFC 8693. It keeps `typ` as `access`, which is exactly why the other thirty-odd routes needed no changes — and exactly why the denylist below is the only thing protecting the target. No refresh token comes with it and `IMPERSONATION_TOKEN_EXPIRE_MINUTES` is 30, because a borrowed session should end on its own. A refresh token carrying `act` is refused outright, so the grant cannot buy a session of its own.
+
+Inside a borrowed session the writes that would widen anybody's reach are closed, whoever the target is: creating, updating or deleting a role, assigning one, and changing feature flags all answer 403, and impersonation cannot be chained. The guard sits inside `require_permission`, so a new admin route is covered the moment it declares the permission it needs. Three routes carry no permission of their own and are named explicitly — `PATCH /users/me`, which changes an email address without asking for a password, plus `POST /auth/password` and `DELETE /users/me`. Everything else writes normally: the point is to reproduce what the account can actually do.
+
+Stopping does not invalidate the token, and cannot — access tokens here are stateless, the same property a password change already carries. The endpoint exists to put the end of the session in the audit trail and to give the frontend one place to leave from; the 30 minutes are what bound the exposure. If revocation has to be real, store the `jti` and check it in `get_actor` only when `act` is present, which costs one SELECT on impersonated requests alone.
+
+Both ends land in `audit_logs`, and so does everything done in between: a row written while impersonating carries the target in `actor_id` and the real account in `impersonator_id`. `request_logs` does not make that distinction — it records the target, because the access log reads the effective user — so the requests screen will name the wrong person and the audit trail is what answers for it.
+
 ## Soft delete
 
 `DELETE /api/v1/items/{id}` and `DELETE /api/v1/users/me` stamp `deleted_at` instead of removing rows, so the history survives an accidental delete. Repositories filter on `deleted_at IS NULL`, which is written out in each query rather than installed as a global loader rule, because a query that quietly rewrites itself is hard to reason about in a template you are about to copy.

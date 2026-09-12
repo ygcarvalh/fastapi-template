@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+    impersonation_token_expire_minutes: int = 30
 
     docs_enabled: bool = True
     cors_origins: str = ""

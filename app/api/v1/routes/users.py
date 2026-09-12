@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query, Request, status
 
 from app.api.deps import (
     CurrentUser,
+    ForbidImpersonation,
     PreferencesServiceDep,
     RequireAuth,
     RoleServiceDep,
@@ -62,7 +63,7 @@ async def read_me(current_user: CurrentUser) -> UserRead:
     return UserRead.model_validate(current_user)
 
 
-@private_router.patch("/me")
+@private_router.patch("/me", dependencies=[ForbidImpersonation])
 async def update_me(
     data: UserUpdate, current_user: CurrentUser, service: UserServiceDep
 ) -> UserRead:
@@ -84,7 +85,11 @@ async def update_my_preferences(
     return PreferencesRead.model_validate(await service.update(current_user, data))
 
 
-@private_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+@private_router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[ForbidImpersonation],
+)
 async def deactivate_me(
     data: AccountDeactivate, current_user: CurrentUser, service: UserServiceDep
 ) -> None:
