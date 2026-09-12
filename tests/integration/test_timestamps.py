@@ -1,6 +1,7 @@
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.core.audit.context import audit_suppressed
 from app.models.user import User
 
 STAMPED_EMAIL = "stamped@example.com"
@@ -42,6 +43,7 @@ async def test_updated_at_advances_on_a_later_transaction(
             assert found.created_at == created_at
             assert found.updated_at > created_at
     finally:
-        async with factory() as session:
-            await session.execute(delete(User).where(User.email == BUMPED_EMAIL))
-            await session.commit()
+        with audit_suppressed():
+            async with factory() as session:
+                await session.execute(delete(User).where(User.email == BUMPED_EMAIL))
+                await session.commit()

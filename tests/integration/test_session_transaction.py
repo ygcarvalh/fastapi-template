@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.core.audit.context import audit_suppressed
 from app.db.session import get_session
 from app.models.user import User
 
@@ -27,9 +28,10 @@ async def _stored_count(factory: SessionFactory, email: str) -> int:
 
 
 async def _purge(factory: SessionFactory, email: str) -> None:
-    async with factory() as session:
-        await session.execute(delete(User).where(User.email == email))
-        await session.commit()
+    with audit_suppressed():
+        async with factory() as session:
+            await session.execute(delete(User).where(User.email == email))
+            await session.commit()
 
 
 async def test_get_session_commits_when_the_request_succeeds(
@@ -37,9 +39,7 @@ async def test_get_session_commits_when_the_request_succeeds(
 ) -> None:
     try:
         async for session in get_session():
-            session.add(
-                User(email=COMMITTED_EMAIL, hashed_password="x")
-            )
+            session.add(User(email=COMMITTED_EMAIL, hashed_password="x"))
 
         assert await _stored_count(bound_factory, COMMITTED_EMAIL) == 1
     finally:
@@ -51,9 +51,7 @@ async def test_get_session_rolls_back_when_the_request_raises(
 ) -> None:
     sessions = get_session()
     session = await anext(sessions)
-    session.add(
-        User(email=ROLLED_BACK_EMAIL, hashed_password="x")
-    )
+    session.add(User(email=ROLLED_BACK_EMAIL, hashed_password="x"))
 
     with pytest.raises(RuntimeError):
         await sessions.athrow(RuntimeError("request failed"))

@@ -5,6 +5,7 @@ from fastapi import Depends, Request, params
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit.context import bind_actor
 from app.core.authorization import scope_for
 from app.core.exceptions import AuthError, ForbiddenError, NotFoundError
 from app.core.security import decode_access_token
@@ -93,6 +94,7 @@ async def get_current_user(
         raise AuthError("Invalid authentication credentials") from exc
     request.state.user_id = user.id
     structlog.contextvars.bind_contextvars(user_id=user.id)
+    bind_actor(user.id)
     return user
 
 

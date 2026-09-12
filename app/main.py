@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from app.api.request_recorder import store_request
 from app.api.v1.router import api_router
+from app.core.audit.middleware import register_audit_context
 from app.core.config import get_settings
 from app.core.http.body_limit import BodySizeLimitMiddleware
 from app.core.http.cors import register_cors
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     )
     register_rate_limiting(app)
     register_security_headers(app, hsts_enabled=settings.hsts_enabled)
+    register_audit_context(app)
     register_request_logging(
         app,
         excluded_paths=parse_excluded_paths(settings.request_log_excluded_paths),

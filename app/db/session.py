@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.core.audit.listeners import register_audit_listeners
 from app.core.config import get_settings
+
+register_audit_listeners()
 
 
 @lru_cache(maxsize=1)
