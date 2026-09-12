@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.exc import IntegrityError
 
+from app.core.authorization import outranks
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import hash_password, verify_password
 from app.models.role import Role
@@ -105,5 +106,18 @@ class UserService:
     async def deactivate(self, user: User, password: str) -> None:
         if not verify_password(password, user.hashed_password):
             raise ForbiddenError("Password is incorrect")
+        await self._close(user)
+
+    # Closing your own account is the route that asks for a password; this one
+    # is somebody else closing it, and a password nobody knows cannot gate it.
+    async def remove(self, actor: User, user_id: int) -> None:
+        target = await self.get(user_id)
+        if target.id == actor.id:
+            raise ForbiddenError("Close your own account from your profile")
+        if not outranks(actor, target):
+            raise ForbiddenError("Insufficient permissions")
+        await self._close(target)
+
+    async def _close(self, user: User) -> None:
         await self._items.soft_delete_for_owner(user.id)
         await self._repo.soft_delete(user)

@@ -143,6 +143,8 @@ Deactivating an account does cut off refreshing straight away, because `refresh`
 
 `PATCH /api/v1/users/me` updates the display name and the address, answering 409 when the address is taken.
 
+`DELETE /api/v1/users/{user_id}` is the administrative counterpart to `DELETE /users/me`, behind `users:delete`. It asks for no password, because the password it would ask for is not the caller's to know, so the permission is the whole of the check — plus two rules: you cannot close your own account this way, and an account that is not a superadmin cannot close one. Like the self-service route it is a soft delete, and what the account owns goes with it.
+
 ## Impersonation
 
 `POST /api/v1/auth/impersonate/{user_id}` hands back an access token that reads the system as somebody else, so a support account can see what a user reports rather than guess at it. `POST /api/v1/auth/impersonate/stop` closes it.

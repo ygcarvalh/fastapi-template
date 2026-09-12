@@ -10,7 +10,7 @@ PUBLIC_OPERATIONS = {
     ("get", "/metrics"),
 }
 
-MINIMUM_DISCOVERED_OPERATIONS = 20
+MINIMUM_DISCOVERED_OPERATIONS = 21
 
 
 def _operations() -> dict[tuple[str, str], bool]:

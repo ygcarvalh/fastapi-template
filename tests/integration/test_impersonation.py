@@ -253,3 +253,11 @@ async def test_stopping_without_having_started_changes_nothing(
 
     assert stopped.status_code == 204
     assert await _audit(db_session, "impersonation") == []
+
+
+async def test_accounts_cannot_be_closed_from_a_borrowed_session(
+    client: AsyncClient, cast: Cast
+) -> None:
+    await _become(client, cast.target_id)
+
+    assert (await client.delete(f"/api/v1/users/{cast.admin_id}")).status_code == 403

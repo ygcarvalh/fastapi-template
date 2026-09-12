@@ -1,9 +1,11 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.core.authorization import IMPERSONATE, READ, USERS
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import hash_password
 from app.models.item import Item
+from app.models.role import Scope
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.user_service import UserService
@@ -12,6 +14,7 @@ from tests.unit.fakes import (
     FakeRoleRepository,
     FakeUserRepository,
     admin_role,
+    role_with,
     user_role,
 )
 
@@ -286,3 +289,58 @@ async def test_deactivating_with_the_wrong_password_is_refused() -> None:
 
     assert users.deactivated == []
     assert items.deleted == []
+
+
+def _support() -> User:
+    return User(
+        id=2,
+        email="support@b.com",
+        hashed_password="x",
+        roles=[
+            role_with(
+                "support",
+                [(USERS, READ, Scope.ALL), (USERS, IMPERSONATE, Scope.ALL)],
+            )
+        ],
+    )
+
+
+async def test_an_account_below_a_superadmin_cannot_close_one() -> None:
+    actor, target = _support(), _admin()
+    service = UserService(
+        FakeUserRepository([actor, target]), FakeItemRepository(), FakeRoleRepository()
+    )
+
+    with pytest.raises(ForbiddenError):
+        await service.remove(actor, target.id)
+
+
+async def test_a_superadmin_closes_another_superadmin() -> None:
+    actor = _admin()
+    target = User(id=9, email="other@b.com", hashed_password="x", roles=[admin_role()])
+    repo = FakeUserRepository([actor, target])
+    service = UserService(repo, FakeItemRepository(), FakeRoleRepository())
+
+    await service.remove(actor, target.id)
+
+    assert [user.id for user in repo.deactivated] == [9]
+
+
+async def test_closing_your_own_account_goes_through_the_other_route() -> None:
+    actor = _admin()
+    service = UserService(
+        FakeUserRepository([actor]), FakeItemRepository(), FakeRoleRepository()
+    )
+
+    with pytest.raises(ForbiddenError):
+        await service.remove(actor, actor.id)
+
+
+async def test_closing_an_account_that_is_not_there_is_not_found() -> None:
+    actor = _admin()
+    service = UserService(
+        FakeUserRepository([actor]), FakeItemRepository(), FakeRoleRepository()
+    )
+
+    with pytest.raises(NotFoundError):
+        await service.remove(actor, 404)

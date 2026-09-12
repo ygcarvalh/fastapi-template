@@ -34,6 +34,7 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
         (REQUEST_LOG, READ, Scope.ALL),
         (USERS, READ, Scope.ALL),
         (USERS, UPDATE, Scope.ALL),
+        (USERS, DELETE, Scope.ALL),
         (USERS, IMPERSONATE, Scope.ALL),
         (ROLES, READ, Scope.ALL),
         (ROLES, CREATE, Scope.ALL),
@@ -55,6 +56,7 @@ BLOCKED_WHILE_IMPERSONATING: frozenset[tuple[str, str]] = frozenset(
         (ROLES, UPDATE),
         (ROLES, DELETE),
         (USERS, UPDATE),
+        (USERS, DELETE),
         (USERS, IMPERSONATE),
         (FEATURE_FLAGS, UPDATE),
     }
@@ -81,10 +83,16 @@ def scope_for(user: User, resource: str, action: str) -> Scope | None:
     return _widest(user).get((resource, action))
 
 
+# Reaching an account that outranks you is the same escalation whether you
+# borrow it or close it, so both answer to one rule.
+def outranks(actor: User, target: User) -> bool:
+    return is_superuser(actor) or not is_superuser(target)
+
+
 def may_impersonate(actor: User, target: User) -> bool:
     if scope_for(actor, USERS, IMPERSONATE) is None:
         return False
-    return is_superuser(actor) or not is_superuser(target)
+    return outranks(actor, target)
 
 
 def granted(user: User) -> list[tuple[str, str, Scope]]:

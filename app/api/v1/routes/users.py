@@ -12,6 +12,7 @@ from app.api.deps import (
     require_permission,
 )
 from app.core.authorization import (
+    DELETE,
     FEATURE_FLAGS,
     READ,
     UPDATE,
@@ -160,6 +161,17 @@ async def update_user_features(
     target = await users.get(user_id)
     stored = await preferences.update(target, PreferencesUpdate(features=data.features))
     return AccountFeaturesRead(features=stored.features, available=available_features())
+
+
+@private_router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[require_permission(USERS, DELETE)],
+)
+async def remove_user(
+    user_id: int, current_user: CurrentUser, service: UserServiceDep
+) -> None:
+    await service.remove(current_user, user_id)
 
 
 @private_router.post(
