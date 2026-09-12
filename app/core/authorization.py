@@ -6,6 +6,7 @@ REQUEST_LOG = "request_log"
 USERS = "users"
 ROLES = "roles"
 FEATURE_FLAGS = "feature_flags"
+SETTINGS = "settings"
 
 READ = "read"
 CREATE = "create"
@@ -21,6 +22,7 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
         (ITEMS, DELETE, Scope.OWN),
         (REQUEST_LOG, READ, Scope.OWN),
         (FEATURE_FLAGS, READ, Scope.ALL),
+        (SETTINGS, READ, Scope.ALL),
     ],
     "superadmin": [
         (ITEMS, READ, Scope.OWN),
@@ -35,6 +37,8 @@ BASE_ROLES: dict[str, list[tuple[str, str, Scope]]] = {
         (ROLES, UPDATE, Scope.ALL),
         (ROLES, DELETE, Scope.ALL),
         (FEATURE_FLAGS, READ, Scope.ALL),
+        (FEATURE_FLAGS, UPDATE, Scope.ALL),
+        (SETTINGS, READ, Scope.ALL),
     ],
 }
 

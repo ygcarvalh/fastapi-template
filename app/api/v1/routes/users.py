@@ -10,7 +10,14 @@ from app.api.deps import (
     UserServiceDep,
     require_permission,
 )
-from app.core.authorization import READ, UPDATE, USERS, granted, is_superuser
+from app.core.authorization import (
+    FEATURE_FLAGS,
+    READ,
+    UPDATE,
+    USERS,
+    granted,
+    is_superuser,
+)
 from app.core.config import get_settings
 from app.core.features import available_features
 from app.core.http.rate_limit import limiter
@@ -123,7 +130,11 @@ async def read_user(user_id: int, service: UserServiceDep) -> UserRead:
 
 
 @private_router.get(
-    "/{user_id}/features", dependencies=[require_permission(USERS, READ)]
+    "/{user_id}/features",
+    dependencies=[
+        require_permission(USERS, READ),
+        require_permission(FEATURE_FLAGS, READ),
+    ],
 )
 async def read_user_features(
     user_id: int, users: UserServiceDep, preferences: PreferencesServiceDep
@@ -133,7 +144,7 @@ async def read_user_features(
 
 
 @private_router.put(
-    "/{user_id}/features", dependencies=[require_permission(USERS, UPDATE)]
+    "/{user_id}/features", dependencies=[require_permission(FEATURE_FLAGS, UPDATE)]
 )
 async def update_user_features(
     user_id: int,

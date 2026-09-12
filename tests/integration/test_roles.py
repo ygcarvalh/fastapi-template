@@ -266,3 +266,80 @@ async def test_changing_the_features_of_an_account_requires_the_permission(
     assert (
         await auth_client.put("/api/v1/users/1/features", json={"features": "items"})
     ).status_code == 403
+
+
+async def test_seeing_the_feature_list_of_an_account_needs_both_permissions(
+    admin_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    await admin_client.post(
+        "/api/v1/roles",
+        json={
+            "name": "reader",
+            "grants": [{"resource": "users", "action": "read", "scope": "all"}],
+        },
+    )
+    holder = await user_factory(email="halfway@example.com", password=ADMIN_PASSWORD)
+    await admin_client.post(
+        f"/api/v1/users/{holder['id']}/roles", json={"role": "reader"}
+    )
+    await admin_client.delete(f"/api/v1/users/{holder['id']}/roles/user")
+    login = await admin_client.post(
+        "/api/v1/auth/login",
+        data={"username": "halfway@example.com", "password": ADMIN_PASSWORD},
+    )
+    admin_client.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
+
+    account = await admin_client.get(f"/api/v1/users/{holder['id']}")
+    features = await admin_client.get(f"/api/v1/users/{holder['id']}/features")
+
+    assert account.status_code == 200
+    assert features.status_code == 403
+
+
+async def test_feature_flags_are_delegated_without_handing_over_the_accounts(
+    admin_client: AsyncClient,
+    db_session: AsyncSession,
+    user_factory: Callable[..., Awaitable[dict[str, object]]],
+) -> None:
+    await admin_client.post(
+        "/api/v1/roles",
+        json={
+            "name": "flagger",
+            "grants": [
+                {"resource": "users", "action": "read", "scope": "all"},
+                {"resource": "feature_flags", "action": "update", "scope": "all"},
+            ],
+        },
+    )
+    holder = await user_factory(email="flagger@example.com", password=ADMIN_PASSWORD)
+    await admin_client.post(
+        f"/api/v1/users/{holder['id']}/roles", json={"role": "flagger"}
+    )
+    await admin_client.delete(f"/api/v1/users/{holder['id']}/roles/user")
+
+    login = await admin_client.post(
+        "/api/v1/auth/login",
+        data={"username": "flagger@example.com", "password": ADMIN_PASSWORD},
+    )
+    admin_client.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
+
+    written = await admin_client.put(
+        f"/api/v1/users/{holder['id']}/features", json={"features": "items"}
+    )
+    refused = await admin_client.post(
+        "/api/v1/roles", json={"name": "sneaky", "grants": []}
+    )
+
+    assert written.status_code == 200
+    assert written.json()["features"] == "items"
+    assert refused.status_code == 403
+
+
+async def test_reading_the_settings_screen_needs_its_own_permission(
+    auth_client: AsyncClient,
+    admin_client: AsyncClient,
+) -> None:
+    held = (await admin_client.get("/api/v1/users/me/permissions")).json()
+
+    assert ("settings", "read") in {(row["resource"], row["action"]) for row in held}

@@ -1,9 +1,12 @@
 from app.core.authorization import (
     DELETE,
+    FEATURE_FLAGS,
     ITEMS,
     READ,
     REQUEST_LOG,
     ROLES,
+    SETTINGS,
+    UPDATE,
     granted,
     is_superuser,
     scope_for,
@@ -84,3 +87,10 @@ def test_a_superadmin_role_alongside_another_still_rules() -> None:
 
     assert is_superuser(account)
     assert scope_for(account, ROLES, DELETE) == Scope.ALL
+
+
+def test_a_plain_account_reads_the_settings_screen_but_writes_no_flag() -> None:
+    account = _user(user_role())
+
+    assert scope_for(account, SETTINGS, READ) == Scope.ALL
+    assert scope_for(account, FEATURE_FLAGS, UPDATE) is None
