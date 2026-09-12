@@ -6,11 +6,11 @@ from sqlalchemy import ColumnElement, CursorResult, delete, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.request_log import RequestLog
+from app.schemas.pagination import decode_cursor
 from app.schemas.request_log import (
     CLIENT_ERROR_STATUS,
     SERVER_ERROR_STATUS,
     RequestLogQuery,
-    decode_cursor,
 )
 
 MAX_STATUS = 599

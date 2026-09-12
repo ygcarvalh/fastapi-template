@@ -5,7 +5,8 @@ from app.core.exceptions import NotFoundError
 from app.models.request_log import RequestLog
 from app.models.role import Scope
 from app.models.user import User
-from app.schemas.request_log import RequestLogQuery, RequestRecord, encode_cursor
+from app.schemas.pagination import encode_cursor
+from app.schemas.request_log import RequestLogQuery, RequestRecord
 from app.services.protocols import RequestLogRepositoryProtocol
 
 

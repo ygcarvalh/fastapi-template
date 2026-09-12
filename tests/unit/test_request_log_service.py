@@ -6,11 +6,10 @@ from app.core.exceptions import NotFoundError
 from app.models.request_log import RequestLog
 from app.models.role import Scope
 from app.models.user import User
+from app.schemas.pagination import decode_cursor, encode_cursor
 from app.schemas.request_log import (
     RequestLogQuery,
     RequestRecord,
-    decode_cursor,
-    encode_cursor,
     outcome_for,
 )
 from app.services.request_log_service import RequestLogService

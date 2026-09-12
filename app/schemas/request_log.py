@@ -1,5 +1,3 @@
-import base64
-import binascii
 from datetime import datetime
 from typing import Annotated, Literal, Self
 
@@ -15,31 +13,12 @@ from pydantic import (
 
 from app.core.observability.request_context import REQUEST_ID_REGEX
 from app.models.request_log import PATH_LENGTH
+from app.schemas.pagination import CURSOR_REGEX, decode_cursor
 
 Outcome = Literal["success", "warning", "error"]
 
 CLIENT_ERROR_STATUS = 400
 SERVER_ERROR_STATUS = 500
-
-
-CURSOR_REGEX = r"^[A-Za-z0-9_=-]{1,200}$"
-CURSOR_SEPARATOR = "|"
-
-
-# The cursor is the ordering key, not an index into the result: the row a reader
-# is looking at cannot shift because rows arrived above it.
-def encode_cursor(created_at: datetime, entry_id: int) -> str:
-    raw = f"{created_at.isoformat()}{CURSOR_SEPARATOR}{entry_id}".encode()
-    return base64.urlsafe_b64encode(raw).decode()
-
-
-def decode_cursor(value: str) -> tuple[datetime, int]:
-    try:
-        raw = base64.urlsafe_b64decode(value.encode()).decode()
-        moment, entry_id = raw.rsplit(CURSOR_SEPARATOR, 1)
-        return datetime.fromisoformat(moment), int(entry_id)
-    except (binascii.Error, UnicodeDecodeError, ValueError) as error:
-        raise ValueError("cursor is not one this API issued") from error
 
 
 def outcome_for(status_code: int) -> Outcome:

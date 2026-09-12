@@ -2,13 +2,16 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from app.core.authorization import BASE_ROLES
+from app.models.audit_log import AuditLog
 from app.models.item import Item
 from app.models.refresh_token import RefreshToken
 from app.models.request_log import RequestLog
 from app.models.role import Permission, Role, RolePermission, Scope
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.schemas.request_log import RequestLogQuery, decode_cursor, outcome_for
+from app.schemas.audit_log import AuditLogQuery
+from app.schemas.pagination import decode_cursor
+from app.schemas.request_log import RequestLogQuery, outcome_for
 
 
 class FakeUserRepository:
@@ -230,6 +233,70 @@ class FakeRequestLogRepository:
         self, cutoff: datetime, batch_size: int
     ) -> int:
         doomed = [entry for entry in self._entries if entry.created_at < cutoff][
+            :batch_size
+        ]
+        self._entries = [entry for entry in self._entries if entry not in doomed]
+        self.pruned.append(cutoff)
+        return len(doomed)
+
+
+class FakeAuditLogRepository:
+    def __init__(self, entries: list[AuditLog] | None = None) -> None:
+        self._entries = entries or []
+        self.pruned: list[datetime] = []
+
+    def _matching(self, query: AuditLogQuery) -> list[AuditLog]:
+        entries = list(self._entries)
+        if query.actor_id is not None:
+            entries = [entry for entry in entries if entry.actor_id == query.actor_id]
+        if query.impersonator_id is not None:
+            entries = [
+                entry
+                for entry in entries
+                if entry.impersonator_id == query.impersonator_id
+            ]
+        if query.table_name:
+            entries = [
+                entry for entry in entries if entry.table_name == query.table_name
+            ]
+        if query.row_pk:
+            entries = [entry for entry in entries if entry.row_pk == query.row_pk]
+        if query.action:
+            entries = [entry for entry in entries if entry.action == query.action]
+        if query.request_id:
+            entries = [
+                entry for entry in entries if entry.request_id == query.request_id
+            ]
+        if query.since is not None:
+            entries = [entry for entry in entries if entry.occurred_at >= query.since]
+        if query.until is not None:
+            entries = [entry for entry in entries if entry.occurred_at <= query.until]
+        if query.cursor is not None:
+            moment, entry_id = decode_cursor(query.cursor)
+            entries = [
+                entry
+                for entry in entries
+                if (entry.occurred_at, entry.id) < (moment, entry_id)
+            ]
+        return sorted(
+            entries, key=lambda entry: (entry.occurred_at, entry.id), reverse=True
+        )
+
+    async def create(self, entry: AuditLog) -> AuditLog:
+        entry.id = len(self._entries) + 1
+        self._entries.append(entry)
+        return entry
+
+    async def list_page(self, query: AuditLogQuery) -> Sequence[AuditLog]:
+        return self._matching(query)[: query.limit + 1]
+
+    async def get(self, entry_id: int) -> AuditLog | None:
+        return next((entry for entry in self._entries if entry.id == entry_id), None)
+
+    async def delete_batch_occurred_before(
+        self, cutoff: datetime, batch_size: int
+    ) -> int:
+        doomed = [entry for entry in self._entries if entry.occurred_at < cutoff][
             :batch_size
         ]
         self._entries = [entry for entry in self._entries if entry not in doomed]

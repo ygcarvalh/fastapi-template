@@ -7,7 +7,8 @@ from app.models.request_log import RequestLog
 from app.models.user import User
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.request_log_repo import RequestLogRepository
-from app.schemas.request_log import RequestLogQuery, encode_cursor
+from app.schemas.pagination import encode_cursor
+from app.schemas.request_log import RequestLogQuery
 
 
 async def _seed(session: AsyncSession, count: int, *, days_old: int = 0) -> None:
@@ -70,9 +71,7 @@ async def test_expired_tokens_are_swept(
     db_session: AsyncSession,
 ) -> None:
     now = datetime.now(UTC)
-    owner = User(
-        email="sweeper@example.com", hashed_password="x"
-    )
+    owner = User(email="sweeper@example.com", hashed_password="x")
     db_session.add(owner)
     await db_session.flush()
     db_session.add_all(
