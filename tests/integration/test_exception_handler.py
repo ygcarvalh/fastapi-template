@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel, Field
 
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import NotFoundError
 from app.core.http.errors import (
     UNEXPECTED_DETAIL,
@@ -33,6 +34,8 @@ async def test_domain_error_maps_to_status() -> None:
     assert response.json() == {
         "detail": "nope",
         "message": "nope",
+        "code": ErrorCode.NOT_FOUND,
+        "params": {},
         "request_id": None,
     }
 
@@ -48,6 +51,8 @@ async def test_unexpected_error_returns_a_generic_500() -> None:
     assert response.json() == {
         "detail": UNEXPECTED_DETAIL,
         "message": UNEXPECTED_MESSAGE,
+        "code": ErrorCode.UNEXPECTED,
+        "params": {},
         "request_id": None,
     }
     assert "hunter2" not in response.text
@@ -85,4 +90,6 @@ async def test_validation_error_omits_the_submitted_value() -> None:
     assert "leaky" not in response.text
     body = response.json()
     assert body["detail"][0]["loc"] == ["body", "secret"]
+    assert body["detail"][0]["ctx"] == {"min_length": 8}
     assert body["message"] == VALIDATION_MESSAGE
+    assert body["code"] == ErrorCode.VALIDATION

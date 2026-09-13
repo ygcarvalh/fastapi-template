@@ -2,11 +2,14 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
+from app.models.attachment import Attachment
 from app.models.audit_log import AuditLog
+from app.models.idempotency_key import IdempotencyKey
 from app.models.item import Item
 from app.models.refresh_token import RefreshToken
 from app.models.request_log import RequestLog
 from app.models.role import Permission, Role
+from app.models.single_use_token import SingleUseToken
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.schemas.audit_log import AuditLogQuery
@@ -73,6 +76,44 @@ class ItemRepositoryProtocol(Protocol):
     async def soft_delete_for_owner(self, owner_id: int) -> None: ...
 
 
+class IdempotencyRepositoryProtocol(Protocol):
+    async def get(self, user_id: int, key: str) -> IdempotencyKey | None: ...
+
+    async def claim(self, entry: IdempotencyKey) -> IdempotencyKey | None: ...
+
+    async def restart(
+        self, entry: IdempotencyKey, request_hash: str, now: datetime
+    ) -> None: ...
+
+    async def complete(
+        self,
+        entry: IdempotencyKey,
+        *,
+        status_code: int,
+        body: str,
+        content_type: str | None,
+        completed_at: datetime,
+    ) -> None: ...
+
+    async def release(self, entry: IdempotencyKey) -> None: ...
+
+    async def delete_batch_created_before(
+        self, cutoff: datetime, batch_size: int
+    ) -> int: ...
+
+
+class AttachmentRepositoryProtocol(Protocol):
+    async def create(self, attachment: Attachment) -> Attachment: ...
+
+    async def list_for_item(self, item_id: int) -> Sequence[Attachment]: ...
+
+    async def get_for_owner(
+        self, attachment_id: int, owner_id: int
+    ) -> Attachment | None: ...
+
+    async def delete(self, attachment: Attachment) -> None: ...
+
+
 class RequestLogRepositoryProtocol(Protocol):
     async def create(self, entry: RequestLog) -> RequestLog: ...
 
@@ -101,6 +142,34 @@ class PreferencesRepositoryProtocol(Protocol):
     async def create(self, preferences: UserPreferences) -> UserPreferences: ...
 
     async def save(self, preferences: UserPreferences) -> UserPreferences: ...
+
+
+class SingleUseTokenRepositoryProtocol(Protocol):
+    async def create(self, token: SingleUseToken) -> SingleUseToken: ...
+
+    async def get_active(
+        self, token_hash: str, purpose: str, now: datetime
+    ) -> SingleUseToken | None: ...
+
+    async def latest_for(self, user_id: int, purpose: str) -> SingleUseToken | None: ...
+
+    async def mark_used(self, token: SingleUseToken, now: datetime) -> None: ...
+
+    async def revoke_all_for(
+        self, user_id: int, purpose: str, now: datetime
+    ) -> int: ...
+
+    async def delete_expired(self, now: datetime) -> int: ...
+
+
+class AccountMailerProtocol(Protocol):
+    async def send_email_verification(
+        self, user: User, token: str, expires_at: datetime
+    ) -> None: ...
+
+    async def send_password_reset(
+        self, user: User, token: str, expires_at: datetime
+    ) -> None: ...
 
 
 class RefreshTokenRepositoryProtocol(Protocol):

@@ -7,7 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.exceptions import DomainError
+from app.core.error_codes import ErrorCode
+from app.core.exceptions import DomainError, ErrorParams
 from app.core.observability.request_context import REQUEST_ID_HEADER, get_request_id
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,23 @@ VALIDATION_MESSAGE = "The request could not be validated."
 HTTP_ERROR_DETAIL = "Request failed"
 UNEXPECTED_MESSAGE = "Something went wrong on our side."
 UNEXPECTED_DETAIL = "Internal server error"
+
+STATUS_CODES: dict[int, ErrorCode] = {
+    status.HTTP_401_UNAUTHORIZED: ErrorCode.UNAUTHORIZED,
+    status.HTTP_403_FORBIDDEN: ErrorCode.FORBIDDEN,
+    status.HTTP_404_NOT_FOUND: ErrorCode.NOT_FOUND,
+    status.HTTP_409_CONFLICT: ErrorCode.CONFLICT,
+    status.HTTP_413_CONTENT_TOO_LARGE: ErrorCode.PAYLOAD_TOO_LARGE,
+    status.HTTP_429_TOO_MANY_REQUESTS: ErrorCode.RATE_LIMITED,
+}
+
+
+def _scalar_context(ctx: Mapping[str, Any] | None) -> dict[str, str | int]:
+    return {
+        key: value
+        for key, value in (ctx or {}).items()
+        if isinstance(value, str | int) and not isinstance(value, bool)
+    }
 
 
 def _correlation_id(request: Request | None) -> str | None:
@@ -32,6 +50,8 @@ def error_response(
     status_code: int,
     detail: Any,
     message: str,
+    code: ErrorCode,
+    params: ErrorParams | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     correlation_id = _correlation_id(request)
@@ -43,6 +63,8 @@ def error_response(
         content={
             "detail": detail,
             "message": message,
+            "code": code.value,
+            "params": dict(params or {}),
             "request_id": correlation_id,
         },
         headers=sent or None,
@@ -63,12 +85,19 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=err.status_code,
             detail=err.detail,
             message=err.detail,
+            code=err.code,
+            params=err.params,
         )
 
     async def handle_validation_error(request: Request, exc: Exception) -> JSONResponse:
         err = cast(RequestValidationError, exc)
         detail = [
-            {"type": error["type"], "loc": list(error["loc"]), "msg": error["msg"]}
+            {
+                "type": error["type"],
+                "loc": list(error["loc"]),
+                "msg": error["msg"],
+                "ctx": _scalar_context(error.get("ctx")),
+            }
             for error in err.errors()
         ]
         return error_response(
@@ -76,6 +105,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=detail,
             message=VALIDATION_MESSAGE,
+            code=ErrorCode.VALIDATION,
         )
 
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
@@ -90,6 +120,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=UNEXPECTED_DETAIL,
             message=UNEXPECTED_MESSAGE,
+            code=ErrorCode.UNEXPECTED,
         )
 
     # The 401 from the bearer scheme and the 404 for an unrouted path are
@@ -107,6 +138,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=err.status_code,
             detail=detail,
             message=detail,
+            code=STATUS_CODES.get(err.status_code, ErrorCode.REQUEST_FAILED),
             headers=err.headers,
         )
 

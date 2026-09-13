@@ -1,4 +1,5 @@
 import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, NamedTuple
 from uuid import uuid4
@@ -8,6 +9,7 @@ from pwdlib import PasswordHash
 from pwdlib.hashers.bcrypt import BcryptHasher
 
 from app.core.config import get_settings
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import AuthError
 
 password_hash = PasswordHash((BcryptHasher(),))
@@ -19,12 +21,20 @@ REFRESH_TOKEN_TYPE: TokenType = "refresh"
 
 INVALID_CREDENTIALS = "Invalid authentication credentials"
 
+
+def invalid_credentials() -> AuthError:
+    return AuthError(INVALID_CREDENTIALS, code=ErrorCode.AUTH_INVALID_CREDENTIALS)
+
+
 IMPERSONATOR_CLAIM = "act"
+
+SINGLE_USE_TOKEN_BYTES = 32
 
 
 class AccessClaims(NamedTuple):
     subject: str
     impersonator: str | None
+    issued_at: datetime
 
 
 def hash_password(password: str) -> str:
@@ -38,6 +48,14 @@ def verify_password(password: str, hashed: str) -> bool:
 # A digest, not a password hash: the token is already high-entropy, and the
 # lookup that checks it has to be deterministic.
 def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def new_single_use_token() -> str:
+    return secrets.token_urlsafe(SINGLE_USE_TOKEN_BYTES)
+
+
+def hash_single_use_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
@@ -96,14 +114,21 @@ def _decode(token: str, expected_type: TokenType) -> dict[str, Any]:
             token, settings.secret_key, algorithms=[settings.jwt_algorithm]
         )
     except jwt.PyJWTError as exc:
-        raise AuthError(INVALID_CREDENTIALS) from exc
+        raise invalid_credentials() from exc
 
     if payload.get("typ") != expected_type:
-        raise AuthError(INVALID_CREDENTIALS)
+        raise invalid_credentials()
 
     if payload.get("sub") is None:
-        raise AuthError(INVALID_CREDENTIALS)
+        raise invalid_credentials()
     return payload
+
+
+def _issued_at(payload: dict[str, Any]) -> datetime:
+    issued = payload.get("iat")
+    if not isinstance(issued, int):
+        raise invalid_credentials()
+    return datetime.fromtimestamp(issued, UTC)
 
 
 def _impersonator_of(payload: dict[str, Any]) -> str | None:
@@ -111,17 +136,19 @@ def _impersonator_of(payload: dict[str, Any]) -> str | None:
     if actor is None:
         return None
     if not isinstance(actor, dict) or actor.get("sub") is None:
-        raise AuthError(INVALID_CREDENTIALS)
+        raise invalid_credentials()
     return str(actor["sub"])
 
 
 def decode_access_token(token: str) -> AccessClaims:
     payload = _decode(token, ACCESS_TOKEN_TYPE)
-    return AccessClaims(str(payload["sub"]), _impersonator_of(payload))
+    return AccessClaims(
+        str(payload["sub"]), _impersonator_of(payload), _issued_at(payload)
+    )
 
 
 def decode_refresh_token(token: str) -> str:
     payload = _decode(token, REFRESH_TOKEN_TYPE)
     if payload.get(IMPERSONATOR_CLAIM) is not None:
-        raise AuthError(INVALID_CREDENTIALS)
+        raise invalid_credentials()
     return str(payload["sub"])

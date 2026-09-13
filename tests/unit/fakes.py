@@ -1,12 +1,14 @@
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.core.authorization import BASE_ROLES
 from app.models.audit_log import AuditLog
+from app.models.idempotency_key import IdempotencyKey
 from app.models.item import Item
 from app.models.refresh_token import RefreshToken
 from app.models.request_log import RequestLog
 from app.models.role import Permission, Role, RolePermission, Scope
+from app.models.single_use_token import SingleUseToken
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.schemas.audit_log import AuditLogQuery
@@ -328,6 +330,7 @@ class FakePreferencesRepository:
 class FakeRefreshTokenRepository:
     def __init__(self, tokens: Sequence[RefreshToken] = ()) -> None:
         self._tokens: list[RefreshToken] = list(tokens)
+        self.revoked_users: list[int] = []
 
     async def create(self, token: RefreshToken) -> RefreshToken:
         token.id = len(self._tokens) + 1
@@ -355,6 +358,7 @@ class FakeRefreshTokenRepository:
         return revoked
 
     async def revoke_all_for_user(self, user_id: int, now: datetime) -> int:
+        self.revoked_users.append(user_id)
         revoked = 0
         for token in self._tokens:
             if token.user_id == user_id and token.revoked_at is None:
@@ -366,3 +370,138 @@ class FakeRefreshTokenRepository:
         expired = [token for token in self._tokens if token.expires_at <= now]
         self._tokens = [token for token in self._tokens if token not in expired]
         return len(expired)
+
+
+class FakeIdempotencyRepository:
+    def __init__(self, entries: Sequence[IdempotencyKey] = ()) -> None:
+        self._entries: list[IdempotencyKey] = list(entries)
+        self.released: list[IdempotencyKey] = []
+
+    async def get(self, user_id: int, key: str) -> IdempotencyKey | None:
+        return next(
+            (
+                entry
+                for entry in self._entries
+                if entry.user_id == user_id and entry.key == key
+            ),
+            None,
+        )
+
+    async def claim(self, entry: IdempotencyKey) -> IdempotencyKey | None:
+        if await self.get(entry.user_id, entry.key) is not None:
+            return None
+        entry.id = len(self._entries) + 1
+        if entry.created_at is None:
+            entry.created_at = datetime.now(UTC)
+        self._entries.append(entry)
+        return entry
+
+    async def restart(
+        self, entry: IdempotencyKey, request_hash: str, now: datetime
+    ) -> None:
+        entry.request_hash = request_hash
+        entry.created_at = now
+        entry.status_code = None
+        entry.response_body = None
+        entry.content_type = None
+        entry.completed_at = None
+
+    async def complete(
+        self,
+        entry: IdempotencyKey,
+        *,
+        status_code: int,
+        body: str,
+        content_type: str | None,
+        completed_at: datetime,
+    ) -> None:
+        entry.status_code = status_code
+        entry.response_body = body
+        entry.content_type = content_type
+        entry.completed_at = completed_at
+
+    async def release(self, entry: IdempotencyKey) -> None:
+        self._entries.remove(entry)
+        self.released.append(entry)
+
+    async def delete_batch_created_before(
+        self, cutoff: datetime, batch_size: int
+    ) -> int:
+        doomed = [entry for entry in self._entries if entry.created_at < cutoff][
+            :batch_size
+        ]
+        for entry in doomed:
+            self._entries.remove(entry)
+        return len(doomed)
+
+
+class FakeSingleUseTokenRepository:
+    def __init__(self, tokens: Sequence[SingleUseToken] = ()) -> None:
+        self._tokens: list[SingleUseToken] = list(tokens)
+
+    async def create(self, token: SingleUseToken) -> SingleUseToken:
+        token.id = len(self._tokens) + 1
+        if token.created_at is None:
+            token.created_at = datetime.now(UTC)
+        self._tokens.append(token)
+        return token
+
+    async def latest_for(self, user_id: int, purpose: str) -> SingleUseToken | None:
+        issued = [
+            token
+            for token in self._tokens
+            if token.user_id == user_id and token.purpose == purpose
+        ]
+        return issued[-1] if issued else None
+
+    async def get_active(
+        self, token_hash: str, purpose: str, now: datetime
+    ) -> SingleUseToken | None:
+        return next(
+            (
+                token
+                for token in self._tokens
+                if token.token_hash == token_hash
+                and token.purpose == purpose
+                and token.used_at is None
+                and token.expires_at > now
+            ),
+            None,
+        )
+
+    async def mark_used(self, token: SingleUseToken, now: datetime) -> None:
+        token.used_at = now
+
+    async def revoke_all_for(self, user_id: int, purpose: str, now: datetime) -> int:
+        live = [
+            token
+            for token in self._tokens
+            if token.user_id == user_id
+            and token.purpose == purpose
+            and token.used_at is None
+        ]
+        for token in live:
+            token.used_at = now
+        return len(live)
+
+    async def delete_expired(self, now: datetime) -> int:
+        expired = [token for token in self._tokens if token.expires_at < now]
+        for token in expired:
+            self._tokens.remove(token)
+        return len(expired)
+
+
+class FakeAccountMailer:
+    def __init__(self) -> None:
+        self.verifications: list[tuple[User, str, datetime]] = []
+        self.resets: list[tuple[User, str, datetime]] = []
+
+    async def send_email_verification(
+        self, user: User, token: str, expires_at: datetime
+    ) -> None:
+        self.verifications.append((user, token, expires_at))
+
+    async def send_password_reset(
+        self, user: User, token: str, expires_at: datetime
+    ) -> None:
+        self.resets.append((user, token, expires_at))

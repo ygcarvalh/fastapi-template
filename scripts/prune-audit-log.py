@@ -2,28 +2,15 @@ import asyncio
 import sys
 from datetime import timedelta
 
-from app.core.audit.context import audit_suppressed
 from app.core.config import get_settings
-from app.db.session import dispose_engine, get_session_factory
-from app.repositories.audit_log_repo import DELETE_BATCH_SIZE, AuditLogRepository
-from app.services.audit_log_service import AuditLogService
+from app.db.session import dispose_engine
+from app.jobs.maintenance import prune_audit_log
 
 
 async def prune(days: int) -> int:
-    retention = timedelta(days=days)
-    removed_total = 0
-    with audit_suppressed():
-        async with get_session_factory()() as session:
-            service = AuditLogService(AuditLogRepository(session))
-            while True:
-                removed = await service.prune_batch(retention, DELETE_BATCH_SIZE)
-                await session.commit()
-                removed_total += removed
-                if removed < DELETE_BATCH_SIZE:
-                    break
-
+    removed = await prune_audit_log(timedelta(days=days))
     await dispose_engine()
-    return removed_total
+    return removed
 
 
 if __name__ == "__main__":

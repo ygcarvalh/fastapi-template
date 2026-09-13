@@ -1,12 +1,23 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+
+from app.core.i18n.timezone import is_known
 
 Theme = Literal["light", "dark", "system"]
 
 # A locale tag rather than a fixed list: the frontend owns which languages it
 # ships, and the API only has to store one that cannot be a log-forging string.
 Locale = Annotated[str, Field(pattern=r"^[a-z]{2}(-[A-Za-z0-9]{2,8})?$", max_length=10)]
+
+
+def _known_timezone(value: str) -> str:
+    if not is_known(value):
+        raise ValueError("timezone is not an IANA zone this machine knows")
+    return value
+
+
+Timezone = Annotated[str, Field(max_length=64), AfterValidator(_known_timezone)]
 
 # A comma-separated list of flag names, or empty for none of them. The API does
 # not know which names the frontend ships, only that a name is a name.
@@ -20,6 +31,7 @@ class PreferencesRead(BaseModel):
 
     locale: str
     theme: Theme
+    timezone: str
     show_request_id: bool
     features: str | None
 
@@ -36,6 +48,7 @@ class AccountFeaturesUpdate(BaseModel):
 class PreferencesUpdate(BaseModel):
     locale: Locale | None = None
     theme: Theme | None = None
+    timezone: Timezone | None = None
     show_request_id: bool | None = None
     # Explicit null hands the account back to the environment's list.
     features: Features | None = None

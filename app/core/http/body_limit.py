@@ -1,6 +1,7 @@
 from fastapi import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import PayloadTooLargeError
 from app.core.http.errors import error_response
 
@@ -40,6 +41,7 @@ class BodySizeLimitMiddleware:
             status_code=PayloadTooLargeError.status_code,
             detail=BODY_TOO_LARGE_DETAIL,
             message=BODY_TOO_LARGE_DETAIL,
+            code=ErrorCode.PAYLOAD_TOO_LARGE,
         )
         await response(scope, receive, send)
 

@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from app.api.v1.routes import audit, auth, features, items, requests, roles, users
+from app.api.v1.routes import (
+    attachments,
+    audit,
+    auth,
+    features,
+    items,
+    requests,
+    roles,
+    users,
+)
 
 api_router = APIRouter()
 
@@ -13,5 +22,6 @@ api_router.include_router(users.private_router)
 api_router.include_router(roles.private_router)
 api_router.include_router(roles.permissions_router)
 api_router.include_router(items.private_router)
+api_router.include_router(attachments.private_router)
 api_router.include_router(requests.private_router)
 api_router.include_router(audit.private_router)

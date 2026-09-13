@@ -8,6 +8,7 @@ from typing import Any
 import structlog
 
 from app.core.observability.request_context import add_request_id
+from app.core.observability.tracing import add_trace_ids
 
 LOG_FILE_MAX_BYTES = 10 * 1024 * 1024
 LOG_FILE_BACKUP_COUNT = 3
@@ -31,6 +32,7 @@ def _shared_processors(service_name: str) -> list[Processor]:
     return [
         structlog.contextvars.merge_contextvars,
         add_request_id,
+        add_trace_ids,
         _add_service(service_name),
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,

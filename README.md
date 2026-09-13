@@ -47,15 +47,27 @@ Login does not reveal whether an account exists. A wrong password and an unknown
 
 Registration answers 409 when an address is already taken, from the check *and* from the write. The check cannot close the race on its own, so a unique violation raised by the flush is read and turned into the same 409 — any other constraint failure stays a 500, because that one is a bug rather than a conflict.
 
-Registration does reveal existence, then, by answering 409 when an address is already taken. That is a deliberate trade for a usable signup form, and it is the one place the template leaks account existence. Closing it properly means answering 202 either way and sending a verification email, which needs a mail provider and a tokens table.
+Registration does reveal existence, then, by answering 409 when an address is already taken. That is a deliberate trade for a usable signup form, and it is the one place the template leaks account existence. The pieces that would close it are now here — `single_use_tokens`, a mailer, and a confirmation endpoint — so the remaining work is the product decision to answer 202 either way and let the mail say which of the two things happened.
+
+`POST /api/v1/auth/password/forgot` already answers that way. It returns 202 with an empty body whether or not the address has an account, and only sends mail in the case where it does. What it does not close is timing: the branch that has an account writes a row and sends a message, so a caller with a stopwatch can still tell the two apart. Closing that means answering before the work, which needs a queue.
 
 Every failing response has the same shape, whatever raised it:
 
 ```json
-{"detail": "Email already registered", "message": "Email already registered", "request_id": "ab8f2c1d4e"}
+{
+  "detail": "Email already registered",
+  "message": "Email already registered",
+  "code": "user.emailTaken",
+  "params": {},
+  "request_id": "ab8f2c1d4e"
+}
 ```
 
-`detail` is what the previous version returned, kept so a client that reads it keeps working. `message` is one sentence a frontend can put in front of a person. `request_id` is the correlation ID, which is also on the `X-Request-ID` header of the same response — including on a 500, where Starlette answers above the middleware that would otherwise set it, so the handler sets it itself.
+`detail` is what the previous version returned, kept so a client that reads it keeps working. `message` is one sentence a frontend can put in front of a person, in English. `code` is the same failure named in a way a client can translate, and `params` carries whatever that sentence interpolates. `request_id` is the correlation ID, which is also on the `X-Request-ID` header of the same response — including on a 500, where Starlette answers above the middleware that would otherwise set it, so the handler sets it itself.
+
+The code is what makes a second language possible without asking the API to speak it. `app/core/error_codes.py` holds every code as an enum, `DomainError` carries one, and each raise site names the precise one — `NotFoundError("Item not found", code=ErrorCode.ITEM_NOT_FOUND)`. Because the field is typed as `ErrorCode`, mypy refuses a code nobody declared. A client looks the code up in its own dictionary and falls back to `message` when it does not recognize it, so an older frontend against a newer API degrades to English instead of to a blank space.
+
+A 422 is the one failure with no single code to translate, so each entry in `detail` keeps pydantic's `type` and gains `ctx`, the numbers the message interpolates. A client translates by type — `string_too_short` with `{"min_length": 8}` — and names the field from `loc`. `ctx` is filtered to plain scalars on the way out, because pydantic also puts the original exception in there and that must not travel to a client.
 
 Domain errors reuse their own detail as the message; 422, 429 and 500 carry a fixed sentence. Framework errors go through the same handler, so the 401 from the bearer scheme and the 404 for an unrouted path arrive in that shape too. `app/schemas/error.py` holds the models, and they are attached to the v1 router, so `/docs` shows the envelope instead of FastAPI's `HTTPValidationError`.
 
@@ -69,13 +81,13 @@ Passwords run from 8 to 72 bytes. bcrypt refuses anything longer, so without the
 
 Addresses are stored in lowercase. `UserCreate` and `UserUpdate` normalize the email before it reaches a service, and login normalizes the submitted username the same way, so `Ada@Example.com` and `ada@example.com` are one account rather than two, and a reader who signs up with the shift key held down can still sign in without it. The migration `0a456e5b983c` lowercases what is already stored; it fails on the partial unique index if two active accounts differ only by case, which is the right outcome, because someone has to decide which one survives.
 
-Request bodies are bounded. `MAX_REQUEST_BODY_BYTES`, 1 MiB by default, is enforced in `app/core/http/body_limit.py`: a declared `Content-Length` above it answers 413 before the route runs, and a body that streams in without one is cut off where it passes the limit. Without that, a single anonymous `POST /api/v1/users` carrying a gigabyte would be read into memory before validation had anything to say about it.
+Request bodies are bounded. `MAX_REQUEST_BODY_BYTES`, 8 MiB by default and checked at startup to sit above `MAX_ATTACHMENT_BYTES`, is enforced in `app/core/http/body_limit.py`: a declared `Content-Length` above it answers 413 before the route runs, and a body that streams in without one is cut off where it passes the limit. Without that, a single anonymous `POST /api/v1/users` carrying a gigabyte would be read into memory before validation had anything to say about it.
 
 Every response carries `Cache-Control: no-store`. The API answers JSON that is either personal or a token, and no intermediary should keep a copy of either.
 
 CSRF protection is absent deliberately. Authentication is bearer-token only and nothing sets a cookie, so a cross-site request has nothing to ride on. Add it if you introduce cookie sessions. CORS is off by default for the same reason it is safe to leave alone: with no origins allowed, browsers block cross-origin calls. When the frontend lives on another origin, set `CORS_ORIGINS` to a comma-separated list of named origins, and `app/core/http/cors.py` adds `CORSMiddleware` with those origins, no credentials, and `X-Request-ID` in `Access-Control-Expose-Headers`, without which a browser never sees the correlation ID it is meant to show the reader. A `*` in the list refuses to start.
 
-Rate limits on the auth endpoints come from `LOGIN_RATE_LIMIT` and `REGISTER_RATE_LIMIT`; login, refresh, logout and password change share the first. The default limiter counts in memory, so counts reset on restart and are per worker. Point slowapi at Redis before running more than one.
+Rate limits on the auth endpoints come from `LOGIN_RATE_LIMIT`, `REGISTER_RATE_LIMIT` and `MAIL_RATE_LIMIT`; login, refresh, logout and password change share the first, and everything that can make the service send a message shares the last. The limiter counts wherever `RATE_LIMIT_STORAGE_URI` points, and empty means in this process: counts reset on restart and each worker allows the whole limit on its own. Set it to `redis://host:6379` before running a second replica, which is a configuration change rather than a code one.
 
 The limiter and the request log both key on the client address, and behind a reverse proxy that address is the proxy's unless uvicorn is told which proxies to believe. Compose starts uvicorn with `--proxy-headers` and passes `FORWARDED_ALLOW_IPS` through, empty by default: with nothing trusted, `X-Forwarded-For` is ignored, so a caller cannot choose its own address to escape the limit. Set it to the proxy's address in production.
 
@@ -135,11 +147,11 @@ Refresh tokens are stored, hashed, in `refresh_tokens`, which is what makes them
 
 A refresh does not rotate the token you traded in. The frontend refreshes from two places — its proxy before a render, its API client on a 401 — so rotating would let a concurrent pair race sign a reader out for no reason. The fixed expiry, `REFRESH_TOKEN_EXPIRE_DAYS`, is what bounds a stolen token that nobody has revoked yet.
 
-Access tokens stay stateless: they are checked by signature alone, so revoking a session does not stop an access token already issued until it expires, 30 minutes by default.
+Access tokens are checked by signature and by one column. `users.password_changed_at` is stamped whenever a password changes, and `get_actor` refuses a token whose `iat` predates it, so a password change or a reset ends every session the account has open rather than leaving a half-hour window. Revoking a single session still does not reach an access token already issued: that is what the 30 minutes bound.
 
 Deactivating an account does cut off refreshing straight away, because `refresh` reloads the user and the repository filters soft-deleted rows. For revocation of individual tokens, store them hashed with a `revoked_at` column and check that on refresh.
 
-`POST /api/v1/auth/password` changes a password and answers 204. It re-verifies the current password, because a leaked access token would otherwise be enough to take an account over for good, and it is rate limited with `LOGIN_RATE_LIMIT` since it is an authenticated bcrypt oracle. A wrong current password answers 403 rather than 401: the caller is who they say they are and only failed the step-up, and a frontend that treats 401 as an expired session would sign them out over a typo. It revokes every refresh token the account holds, so other devices have to sign in again; access tokens already minted survive until they expire. Add a `password_changed_at` column and compare `iat` against it if you need that half hour closed too.
+`POST /api/v1/auth/password` changes a password and answers 204. It re-verifies the current password, because a leaked access token would otherwise be enough to take an account over for good, and it is rate limited with `LOGIN_RATE_LIMIT` since it is an authenticated bcrypt oracle. A wrong current password answers 403 rather than 401: the caller is who they say they are and only failed the step-up, and a frontend that treats 401 as an expired session would sign them out over a typo. It revokes every refresh token the account holds, and stamps `password_changed_at`, so the access tokens already minted stop working on their next request rather than surviving the half hour.
 
 `PATCH /api/v1/users/me` updates the display name and the address, answering 409 when the address is taken.
 
@@ -155,7 +167,7 @@ The token carries the target as `sub` and the real account under `act`, the acto
 
 Inside a borrowed session the writes that would widen anybody's reach are closed, whoever the target is: creating, updating or deleting a role, assigning one, and changing feature flags all answer 403, and impersonation cannot be chained. The guard sits inside `require_permission`, so a new admin route is covered the moment it declares the permission it needs. Three routes carry no permission of their own and are named explicitly — `PATCH /users/me`, which changes an email address without asking for a password, plus `POST /auth/password` and `DELETE /users/me`. Everything else writes normally: the point is to reproduce what the account can actually do.
 
-Stopping does not invalidate the token, and cannot — access tokens here are stateless, the same property a password change already carries. The endpoint exists to put the end of the session in the audit trail and to give the frontend one place to leave from; the 30 minutes are what bound the exposure. If revocation has to be real, store the `jti` and check it in `get_actor` only when `act` is present, which costs one SELECT on impersonated requests alone.
+Stopping does not invalidate the token, and cannot: nothing about the borrowed session is stored, and the one column a token is checked against belongs to the password rather than to the grant. The endpoint exists to put the end of the session in the audit trail and to give the frontend one place to leave from; the 30 minutes are what bound the exposure. If revocation has to be real, store the `jti` and check it in `get_actor` only when `act` is present, which costs one SELECT on impersonated requests alone.
 
 Both ends land in `audit_logs`, and so does everything done in between: a row written while impersonating carries the target in `actor_id` and the real account in `impersonator_id`. `request_logs` does not make that distinction — it records the target, because the access log reads the effective user — so the requests screen will name the wrong person and the audit trail is what answers for it.
 
@@ -170,6 +182,74 @@ Two details are easy to get wrong:
 
 Deactivation ends access immediately: `get_by_email` and `get` both filter deleted rows, so a deactivated account cannot log in and an already issued token stops working on the next request.
 
+## Concurrent writes
+
+An item carries a `version`. `GET /api/v1/items/{id}` answers with it in the body and as a weak `ETag`, and `PATCH` and `DELETE` require the reader to send it back as `If-Match`. A write against the version you read goes through and the version moves; a write against an older one answers 412 with `error.versionConflict` and the two numbers in `params`, so a frontend can say which version is current instead of saying that something went wrong. A write with no `If-Match` at all answers 428, because silently overwriting is the outcome the header exists to prevent.
+
+Two guards, not one. The service compares the version it loaded, which catches the ordinary case of a stale form. Underneath, `VersionMixin` sets SQLAlchemy's `version_id_col`, so the UPDATE carries `WHERE version = ?` and a second transaction that commits in between loses the race at the database rather than in Python. The repository turns that `StaleDataError` into the same 412.
+
+`version` sits in `app/db/mixins.py` next to the timestamp and soft-delete mixins, and `Item` is the only model that uses it. Adding it to a model of your own is one mixin and one migration. Adding it to a table that already has rows in production is a migration plus a rewrite of every write path, which is why it is here from the start on the slice meant to be copied.
+
+## Idempotent writes
+
+A client that retries a `POST` after a timeout has no way to know whether the first one landed. Send an `Idempotency-Key` header and this API answers the retry with the stored response instead of doing the work twice. The replayed response carries `Idempotent-Replay: true`, and the same key sent with a different body answers 409 rather than replaying an answer that no longer describes the request.
+
+The key is claimed before the route runs and released if the route fails, so a refused request does not burn it. A second call that arrives while the first is still running answers 409 as well: at most one of them is doing the work. A claim nobody finished inside `IDEMPOTENCY_IN_FLIGHT_TIMEOUT_SECONDS` is taken over by the next retry, because a process that died holding a key should cost a retry rather than the key. Keys are scoped to the account that sent them, which is why `IdempotencyMiddleware` reads the bearer token itself — without the caller in the key, one account's retry could be answered with another account's response. A request with no valid token ignores the header, and so does a borrowed session: while impersonating, two people write as one account and a shared key space would be theirs to collide in.
+
+`IDEMPOTENCY_RETENTION_HOURS` bounds how long a key is remembered, and a job sweeps what ages out. The middleware stores answers up to 64 KiB and only JSON ones, so a file download is never held in the table.
+
+## Mail, confirmation and password reset
+
+`MailSender` is a protocol with two implementations. `MAIL_BACKEND=log` writes the whole message to the structured log, which is how you read a confirmation link with nothing else running; `MAIL_BACKEND=smtp` sends it through stdlib `smtplib` on a worker thread. Leaving it on `log` in production would put reset links in the logs, which is the one thing to remember about this setting.
+
+Compose brings up Mailpit and points the API at it, so a clone speaks real SMTP from the first `docker compose up` with no account anywhere. Every message the API sends lands at http://127.0.0.1:8025 and nowhere else, which is what you want while testing a registration flow against addresses you invented.
+
+Delivering to a real inbox is a different problem, and a container cannot solve it: reaching Gmail needs a domain with SPF, DKIM and DMARC, outbound port 25 that your network does not block, and an IP nobody has burned. So the path to real mail is a provider, and Mailpit already knows how to be the bridge. Give it `MP_SMTP_RELAY_HOST` and credentials and it forwards what it receives instead of holding it, and `MP_SMTP_RELAY_ALLOWED_RECIPIENTS` restricts forwarding to a pattern you name — your own domain, say — so a test run cannot mail a customer. Both are commented out in `compose.yaml`. Pointing `SMTP_HOST` straight at the provider works too; the relay is the version that keeps a copy of everything in the web inbox.
+
+Two flows sit on top of it. Registration sends a confirmation link, `POST /api/v1/auth/email/verify` spends it, and an account can ask for another. `POST /api/v1/auth/password/forgot` sends a reset link and `POST /api/v1/auth/password/reset` spends it, setting the new password and revoking every refresh token the account holds, because a reset is what somebody does when they think the account is not theirs any more.
+
+Both links are single-use tokens from `secrets.token_urlsafe`, stored as a sha256 digest in `single_use_tokens` with a purpose and an expiry. Asking again retires the link already sent, and `MAIL_RESEND_COOLDOWN_SECONDS` refuses to send a second one inside the window, which is what bounds how much mail one address receives however many callers ask on its behalf. A token is refused if it is expired, already spent, or carries the other purpose, so a confirmation link cannot be used to change a password.
+
+`REQUIRE_VERIFIED_EMAIL` decides whether an unconfirmed address can sign in. It ships off, so a clone works before a mail server exists; turn it on once one does.
+
+The message is written in the language the account saved. `app/core/i18n/locale.py` resolves a locale from the stored preference first and the request's `Accept-Language` second, and the deadline in the message is formatted in the timezone the account saved. That ordering is deliberate: mail is sent when there is no request to read a header from, so the database is the only source that is always there. Synchronous responses go the other way and carry a code the frontend translates, so the API never has to speak the reader's language.
+
+## Attachments
+
+`POST /api/v1/items/{id}/attachments` takes a multipart upload and stores it through a `Storage` protocol. The implementation that ships writes to a directory on this machine, `STORAGE_ROOT`, so a clone needs no object store; swapping in S3 is a class in `app/core/storage/` and one line in `app/api/deps.py`.
+
+The stored name is a generated key, never the submitted filename, so a name carrying `../` reaches nothing. The filename is kept for the download header after being reduced to a plain basename. `ATTACHMENT_CONTENT_TYPES` is an allowlist and `MAX_ATTACHMENT_BYTES` a ceiling counted as the file streams, so a file over the limit is refused mid-upload and the partial one is swept.
+
+## Background jobs
+
+The retention scripts became jobs. `app/jobs/` holds the work, `app/core/jobs/scheduler.py` runs each one on its own interval inside the API process, and `JOBS_ENABLED` turns the whole thing off. There is no broker, because a template that needs Redis to start is a template that does not start.
+
+Every job takes a PostgreSQL advisory lock named after `SERVICE_NAME` and the job, so a second replica skips the run rather than doing it twice, and two services sharing one database do not exclude each other over a name they happen to share. A job that raises is logged and tried again on the next tick instead of killing the loop.
+
+Four ship: pruning the audit log, pruning the request log, pruning spent idempotency keys, and deleting expired tokens. When the work outgrows an in-process loop, `Job.run` is the seam — point it at arq or taskiq and nothing else moves.
+
+## The admin CLI
+
+```bash
+uv run fastapi-template create-superuser
+uv run fastapi-template grant-role reader@example.com superadmin
+uv run fastapi-template verify-email reader@example.com
+uv run fastapi-template seed
+uv run fastapi-template prune
+```
+
+`app/cli/actions.py` holds the work and `app/cli/main.py` is the typer wiring, which is why the actions are covered by tests that never touch the terminal. The password is always prompted for and never accepted as a flag, so it does not land in shell history. typer arrives with `fastapi[standard]`, so this costs no dependency.
+
+## Starting your own project
+
+```bash
+python3 scripts/bootstrap.py my-project
+```
+
+It renames the template in `pyproject.toml`, `compose.yaml`, `alembic.ini` and `.env.example`, writes a `.env` with a generated `SECRET_KEY`, and empties the changelog, which belongs to the template rather than to your app. An existing `.env` is left alone.
+
+What it deliberately does not do is delete the `Item` slice. That slice is the worked example the rest of the documentation points at, and removing it means touching a model, a repository, a service, a router, a migration and a feature flag. Copy it, then delete it when your own resource works.
+
 ## Quickstart with Docker
 
 Requires Docker with Compose. Generate a secret first, because the app refuses to start without one:
@@ -180,7 +260,7 @@ sed -i "s/^SECRET_KEY=.*/SECRET_KEY=$(openssl rand -hex 32)/" .env
 docker compose up --build
 ```
 
-Compose starts PostgreSQL, waits for it to pass its healthcheck, applies migrations, and serves the API on http://127.0.0.1:8000. The test database is created alongside the main one by `scripts/create-test-database.sh`. Override `POSTGRES_PORT` or `API_PORT` if those ports are already taken on your machine. The database port is published on loopback only, because the default password is in this file.
+Compose starts PostgreSQL and Mailpit, waits for both to pass their healthchecks, applies migrations, and serves the API on http://127.0.0.1:8000. Mail the API sends is readable at http://127.0.0.1:8025. The test database is created alongside the main one by `scripts/create-test-database.sh`. Override `POSTGRES_PORT` or `API_PORT` if those ports are already taken on your machine. The database port is published on loopback only, because the default password is in this file.
 
 A `psql` against that database is one command away, and it needs nothing installed on the host:
 
@@ -264,13 +344,15 @@ It costs one INSERT and three index updates per request: `request_id` for the lo
 uv run python scripts/prune-request-log.py 30    # keep 30 days
 ```
 
-It deletes in batches of 5000 and commits between them, so a retention run does not hold one lock for the length of a single enormous statement, and it sweeps expired refresh tokens on the way out.
+It deletes in batches of 5000 and commits between them, so a retention run does not hold one lock for the length of a single enormous statement, and it sweeps expired tokens on the way out. The same work runs on its own inside the API while `JOBS_ENABLED` is on, so the script is what you reach for when you want it to happen now.
 
 Past a few million rows, partition by month and drop whole partitions instead.
 
 This is the one collection that does not return a `total`. `GET /api/v1/requests` answers with a `CursorPage` — `items`, `limit`, `next_cursor` — because counting every matching row is what makes a table that grows by one row per request expensive to read, and an `offset` deep into it costs the same walk. The cursor is the ordering key `(created_at, id)`, base64 of the pair, so a row cannot shift under a reader because newer rows arrived above it. The endpoint reads one row past the limit to decide whether to hand back a cursor at all. Every other collection keeps `Page[T]` and its `total`: they are bounded, and a count over a few thousand rows is free. And bear in mind that only the auth routes are throttled, so a flood anywhere else writes rows at the attacker's pace: widen `REQUEST_LOG_EXCLUDED_PATHS`, or sample, before exposing this to the open internet.
 
 Prometheus metrics are served at `/metrics`, from `prometheus-fastapi-instrumentator`. Set `METRICS_ENABLED=false` to withdraw the route. The counters live in the process, so behind more than one worker each reports only its own share, the same caveat the in-memory rate limiter carries.
+
+Traces sit next to them. `TRACING_ENABLED` instruments FastAPI and SQLAlchemy and puts `trace_id` and `span_id` on every log line, so a correlation ID and a trace identify the same request from two directions. Nothing leaves the process until `OTLP_ENDPOINT` names a collector, which is why it ships on: the spans cost little and the `trace_id` in the log is worth having before anyone stands up Tempo or Jaeger. Point it at `http://collector:4318/v1/traces` when somebody does. Note that SQLAlchemy's instrumentation records statement text on the span, so table and column names travel to whatever collector you name.
 
 `GET /api/v1/features` lists what is on, and it needs a token: a flag name can describe work nobody has announced.
 
@@ -339,11 +421,13 @@ Copy the `Item` slice, renaming across the layers:
 1. `app/models/<name>.py` — ORM model (register it in `app/models/__init__.py`).
 2. `app/schemas/<name>.py` — Pydantic schemas.
 3. `app/services/protocols.py` — the repository interface the service needs.
-4. `app/repositories/<name>_repo.py` — queries implementing that interface.
+4. `app/repositories/<name>_repo.py` — queries implementing that interface, on top of `BaseRepository`, which holds the session and the flush, refresh, rowcount and batch-delete plumbing.
 5. `app/services/<name>_service.py` — business rules, depending on the protocol.
 6. `app/api/v1/routes/<name>.py` — routes; include it in `app/api/v1/router.py`.
 7. Add a dependency provider in `app/api/deps.py`.
 8. Write unit + integration tests first, with fakes in `tests/unit/fakes.py`.
+
+Three decisions come with the copy. Name a code in `app/core/error_codes.py` for every way the resource can refuse, so a frontend can translate it. Add `VersionMixin` to the model if two people can edit one row, because adding it later is a migration plus a rewrite of every write path. And decide whether the rows are audited: a table left out of `EXCLUDED_TABLES` in `app/core/audit/policy.py` is recorded column by column, which is right for domain data and wrong for anything holding a digest or a copy of a response.
 
 ## Migrations
 
@@ -387,28 +471,36 @@ There is no CI workflow, so the hooks are the gate: `uv run pre-commit install -
 ```
 app/
   main.py                 # app factory; lifespan, routers, exception handlers
-  core/                   # config, security, domain exceptions, feature flags
-    http/                 # error envelope, security headers, CORS, body limit, rate limit
-    observability/        # logging, correlation ids, access log, metrics
-  db/                     # declarative base, engine and session lifecycle
+  cli/                    # administrative commands; actions apart from the typer wiring
+  core/                   # config, security, error codes, domain exceptions, feature flags
+    http/                 # error envelope, security headers, CORS, body limit, rate limit,
+                          # idempotency, If-Match
+    i18n/                 # locale and timezone resolution for anything rendered server side
+    jobs/                 # the scheduler, with no knowledge of the database
+    mail/                 # the sender protocol, its two backends, the message templates
+    observability/        # logging, correlation ids, access log, metrics, tracing
+    storage/              # the storage protocol and the local-filesystem backend
+  db/                     # declarative base, column mixins, engine and session lifecycle
+  jobs/                   # the maintenance work, and the advisory lock that bounds it
   api/
     deps.py               # shared dependencies (session, current user, services)
+    idempotency_store.py  # the database behind the idempotency middleware
     request_recorder.py   # writes the access log row on its own session
     v1/
       router.py           # aggregates v1 routers, public ones first
-      routes/             # auth, users, items, requests, features
+      routes/             # auth, users, items, attachments, requests, roles, audit, features
   models/                 # SQLAlchemy models
   schemas/                # Pydantic schemas, including pagination and the error envelope
   repositories/           # database access
   services/               # business logic
     protocols.py          # repository interfaces the services depend on
 alembic/                  # migration environment + versions
-scripts/                  # database bootstrap, commit lint, request-log pruning
+scripts/                  # bootstrap, database bootstrap, commit lint, retention entry points
 tests/
   unit/                   # logic against typed fakes
   integration/            # routes through the test database
 Dockerfile                # multi-stage build, non-root runtime
-compose.yaml              # PostgreSQL + API, migrations on start
+compose.yaml              # PostgreSQL, Mailpit and the API, migrations on start
 CONTRIBUTING.md           # setup, conventions, release sequence
 SECURITY.md               # reporting, posture, pre-deploy checklist
 ```

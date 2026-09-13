@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query, Request, status
 
 from app.api.deps import (
     CurrentUser,
+    EmailVerificationServiceDep,
     ForbidImpersonation,
     PreferencesServiceDep,
     RequireAuth,
@@ -53,9 +54,13 @@ private_router = APIRouter(
 @public_router.post("", status_code=status.HTTP_201_CREATED)
 @limiter.limit(lambda: get_settings().register_rate_limit)
 async def register_user(
-    request: Request, data: UserCreate, service: UserServiceDep
+    request: Request,
+    data: UserCreate,
+    service: UserServiceDep,
+    verification: EmailVerificationServiceDep,
 ) -> UserRead:
     user = await service.register(data)
+    await verification.request(user)
     return UserRead.model_validate(user)
 
 

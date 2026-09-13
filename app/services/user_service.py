@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from sqlalchemy.exc import IntegrityError
 
 from app.core.authorization import outranks
+from app.core.error_codes import ErrorCode
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import hash_password, verify_password
 from app.models.role import Role
@@ -22,7 +23,7 @@ UNIQUE_VIOLATION = "23505"
 # a bug on our side and stays a 500.
 def _as_conflict(error: IntegrityError) -> Exception:
     if getattr(error.orig, "sqlstate", None) == UNIQUE_VIOLATION:
-        return ConflictError(EMAIL_TAKEN)
+        return ConflictError(EMAIL_TAKEN, code=ErrorCode.USER_EMAIL_TAKEN)
     return error
 
 
@@ -40,12 +41,12 @@ class UserService:
     async def _role(self, name: str) -> Role:
         role = await self._roles.get_by_name(name)
         if role is None:
-            raise NotFoundError("Role not found")
+            raise NotFoundError("Role not found", code=ErrorCode.ROLE_NOT_FOUND)
         return role
 
     async def register(self, data: UserCreate) -> User:
         if await self._repo.get_by_email(data.email) is not None:
-            raise ConflictError(EMAIL_TAKEN)
+            raise ConflictError(EMAIL_TAKEN, code=ErrorCode.USER_EMAIL_TAKEN)
         first = not await self._repo.exists_any()
         user = User(
             email=data.email,
@@ -61,7 +62,7 @@ class UserService:
     async def get(self, user_id: int) -> User:
         user = await self._repo.get(user_id)
         if user is None:
-            raise NotFoundError("User not found")
+            raise NotFoundError("User not found", code=ErrorCode.USER_NOT_FOUND)
         return user
 
     async def update(self, user: User, data: UserUpdate) -> User:
@@ -69,7 +70,7 @@ class UserService:
         email = fields.get("email")
         if email is not None and email != user.email:
             if await self._repo.get_by_email(email) is not None:
-                raise ConflictError(EMAIL_TAKEN)
+                raise ConflictError(EMAIL_TAKEN, code=ErrorCode.USER_EMAIL_TAKEN)
             user.email = email
         if "name" in fields:
             user.name = fields["name"]
@@ -88,7 +89,10 @@ class UserService:
 
     async def remove_role(self, actor: User, user_id: int, role_name: str) -> User:
         if actor.id == user_id and role_name == UserRole.ADMIN:
-            raise ForbiddenError("You cannot drop your own superadmin role")
+            raise ForbiddenError(
+                "You cannot drop your own superadmin role",
+                code=ErrorCode.USER_SELF_ADMIN_ROLE,
+            )
         user = await self.get(user_id)
         role = await self._role(role_name)
         if not any(held.name == role.name for held in user.roles):
@@ -105,15 +109,23 @@ class UserService:
     # registers again starts empty.
     async def deactivate(self, user: User, password: str) -> None:
         if not verify_password(password, user.hashed_password):
-            raise ForbiddenError("Password is incorrect")
+            raise ForbiddenError(
+                "Password is incorrect", code=ErrorCode.USER_PASSWORD_INCORRECT
+            )
         await self._close(user)
 
     async def remove(self, actor: User, user_id: int) -> None:
         target = await self.get(user_id)
         if target.id == actor.id:
-            raise ForbiddenError("Close your own account from your profile")
+            raise ForbiddenError(
+                "Close your own account from your profile",
+                code=ErrorCode.USER_CLOSE_OWN_ACCOUNT,
+            )
         if not outranks(actor, target):
-            raise ForbiddenError("Insufficient permissions")
+            raise ForbiddenError(
+                "Insufficient permissions",
+                code=ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+            )
         await self._close(target)
 
     async def _close(self, user: User) -> None:

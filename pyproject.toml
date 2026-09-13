@@ -15,6 +15,10 @@ dependencies = [
     "slowapi>=0.1.9",
     "structlog>=25.4",
     "prometheus-fastapi-instrumentator>=7.1",
+    "opentelemetry-sdk>=1.30",
+    "opentelemetry-instrumentation-fastapi>=0.51b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.51b0",
+    "opentelemetry-exporter-otlp-proto-http>=1.30",
 ]
 
 [dependency-groups]
@@ -28,7 +32,11 @@ dev = [
     "pre-commit>=4.6.1",
     "git-cliff>=2.7",
     "pip-audit>=2.7",
+    "testcontainers[postgres]>=4.9",
 ]
+
+[project.scripts]
+fastapi-template = "app.cli.main:cli"
 
 [build-system]
 requires = ["hatchling"]

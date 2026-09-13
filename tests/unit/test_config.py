@@ -87,3 +87,24 @@ def test_a_wildcard_cors_origin_is_refused() -> None:
             secret_key=_STRONG_SECRET,
             cors_origins="https://a.example.com, *",
         )
+
+
+def test_an_upload_ceiling_above_the_body_limit_refuses_to_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MAX_REQUEST_BODY_BYTES", "1048576")
+    monkeypatch.setenv("MAX_ATTACHMENT_BYTES", "5242880")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings()  # type: ignore[call-arg]
+
+    assert "MAX_REQUEST_BODY_BYTES" in str(raised.value)
+
+
+def test_an_upload_ceiling_under_the_body_limit_starts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MAX_REQUEST_BODY_BYTES", "8388608")
+    monkeypatch.setenv("MAX_ATTACHMENT_BYTES", "5242880")
+
+    assert Settings().max_attachment_bytes == 5242880  # type: ignore[call-arg]

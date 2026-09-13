@@ -14,7 +14,14 @@ class AuditAction(StrEnum):
 
 
 EXCLUDED_TABLES = frozenset(
-    {"audit_logs", "request_logs", "refresh_tokens", "alembic_version"}
+    {
+        "audit_logs",
+        "request_logs",
+        "refresh_tokens",
+        "single_use_tokens",
+        "idempotency_keys",
+        "alembic_version",
+    }
 )
 
 REDACTED_COLUMNS = frozenset(

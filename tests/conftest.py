@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 
 import pytest
 import pytest_asyncio
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import (
     AsyncSession,
     create_async_engine,
 )
+from testcontainers.community.postgres import PostgresContainer
 
 from app import models as _models  # noqa: F401
 from app.core.config import get_settings
@@ -23,14 +24,23 @@ def fresh_rate_limits() -> None:
     reset_rate_limits()
 
 
+POSTGRES_IMAGE = "postgres:17-alpine"
+
+
+@pytest.fixture(scope="session")
+def database_url() -> Iterator[str]:
+    configured = get_settings().test_database_url
+    if configured:
+        yield configured
+        return
+
+    with PostgresContainer(POSTGRES_IMAGE, driver="asyncpg") as container:
+        yield container.get_connection_url()
+
+
 @pytest_asyncio.fixture(scope="session")
-async def engine() -> AsyncGenerator[AsyncEngine]:
-    test_database_url = get_settings().test_database_url
-    if test_database_url is None:
-        raise RuntimeError(
-            "TEST_DATABASE_URL is required to run the suite; copy .env.example to .env"
-        )
-    engine = create_async_engine(test_database_url)
+async def engine(database_url: str) -> AsyncGenerator[AsyncEngine]:
+    engine = create_async_engine(database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with AsyncSession(bind=engine) as session:

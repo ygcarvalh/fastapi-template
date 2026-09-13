@@ -1,6 +1,14 @@
 from collections.abc import Awaitable, Callable
 
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
+
+
+async def _create(client: AsyncClient, **payload: object) -> Response:
+    return await client.post("/api/v1/items", json=payload)
+
+
+def _if_match(response: Response) -> dict[str, str]:
+    return {"If-Match": response.headers["etag"]}
 
 
 async def test_items_require_auth(client: AsyncClient) -> None:
@@ -61,11 +69,11 @@ async def test_list_items_rejects_a_limit_above_the_maximum(
 
 
 async def test_update_item(auth_client: AsyncClient) -> None:
-    item_id = (await auth_client.post("/api/v1/items", json={"title": "old"})).json()[
-        "id"
-    ]
+    created = await _create(auth_client, title="old")
     response = await auth_client.patch(
-        f"/api/v1/items/{item_id}", json={"title": "new"}
+        f"/api/v1/items/{created.json()['id']}",
+        json={"title": "new"},
+        headers=_if_match(created),
     )
     assert response.status_code == 200
     assert response.json()["title"] == "new"
@@ -74,14 +82,14 @@ async def test_update_item(auth_client: AsyncClient) -> None:
 async def test_patch_clears_description_when_explicitly_null(
     auth_client: AsyncClient,
 ) -> None:
-    created = await auth_client.post(
-        "/api/v1/items", json={"title": "documented", "description": "some text"}
-    )
+    created = await _create(auth_client, title="documented", description="some text")
     item_id = created.json()["id"]
     assert created.json()["description"] == "some text"
 
     response = await auth_client.patch(
-        f"/api/v1/items/{item_id}", json={"description": None}
+        f"/api/v1/items/{item_id}",
+        json={"description": None},
+        headers=_if_match(created),
     )
     assert response.status_code == 200
     assert response.json()["description"] is None
@@ -90,13 +98,13 @@ async def test_patch_clears_description_when_explicitly_null(
 async def test_patch_leaves_omitted_description_untouched(
     auth_client: AsyncClient,
 ) -> None:
-    created = await auth_client.post(
-        "/api/v1/items", json={"title": "documented", "description": "some text"}
-    )
+    created = await _create(auth_client, title="documented", description="some text")
     item_id = created.json()["id"]
 
     response = await auth_client.patch(
-        f"/api/v1/items/{item_id}", json={"title": "retitled"}
+        f"/api/v1/items/{item_id}",
+        json={"title": "retitled"},
+        headers=_if_match(created),
     )
     assert response.status_code == 200
     assert response.json()["title"] == "retitled"
@@ -104,19 +112,25 @@ async def test_patch_leaves_omitted_description_untouched(
 
 
 async def test_patch_rejects_null_title(auth_client: AsyncClient) -> None:
-    item_id = (await auth_client.post("/api/v1/items", json={"title": "keep"})).json()[
-        "id"
-    ]
+    created = await _create(auth_client, title="keep")
 
-    response = await auth_client.patch(f"/api/v1/items/{item_id}", json={"title": None})
+    response = await auth_client.patch(
+        f"/api/v1/items/{created.json()['id']}",
+        json={"title": None},
+        headers=_if_match(created),
+    )
     assert response.status_code == 422
 
 
 async def test_delete_item(auth_client: AsyncClient) -> None:
-    item_id = (await auth_client.post("/api/v1/items", json={"title": "gone"})).json()[
-        "id"
-    ]
-    assert (await auth_client.delete(f"/api/v1/items/{item_id}")).status_code == 204
+    created = await _create(auth_client, title="gone")
+    item_id = created.json()["id"]
+
+    deleted = await auth_client.delete(
+        f"/api/v1/items/{item_id}", headers=_if_match(created)
+    )
+
+    assert deleted.status_code == 204
     assert (await auth_client.get(f"/api/v1/items/{item_id}")).status_code == 404
 
 
@@ -125,9 +139,7 @@ async def test_cannot_access_other_users_item(
     client: AsyncClient,
     user_factory: Callable[..., Awaitable[dict[str, object]]],
 ) -> None:
-    item_id = (await auth_client.post("/api/v1/items", json={"title": "mine"})).json()[
-        "id"
-    ]
+    item_id = (await _create(auth_client, title="mine")).json()["id"]
     await user_factory(email="other@example.com", password="secret123")
     login = await client.post(
         "/api/v1/auth/login",
