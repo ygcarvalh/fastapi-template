@@ -147,11 +147,11 @@ Refresh tokens are stored, hashed, in `refresh_tokens`, which is what makes them
 
 A refresh does not rotate the token you traded in. The frontend refreshes from two places — its proxy before a render, its API client on a 401 — so rotating would let a concurrent pair race sign a reader out for no reason. The fixed expiry, `REFRESH_TOKEN_EXPIRE_DAYS`, is what bounds a stolen token that nobody has revoked yet.
 
-Access tokens stay stateless: they are checked by signature alone, so revoking a session does not stop an access token already issued until it expires, 30 minutes by default.
+Access tokens are checked by signature and by one column. `users.password_changed_at` is stamped whenever a password changes, and `get_actor` refuses a token whose `iat` predates it, so a password change or a reset ends every session the account has open rather than leaving a half-hour window. Revoking a single session still does not reach an access token already issued: that is what the 30 minutes bound.
 
 Deactivating an account does cut off refreshing straight away, because `refresh` reloads the user and the repository filters soft-deleted rows. For revocation of individual tokens, store them hashed with a `revoked_at` column and check that on refresh.
 
-`POST /api/v1/auth/password` changes a password and answers 204. It re-verifies the current password, because a leaked access token would otherwise be enough to take an account over for good, and it is rate limited with `LOGIN_RATE_LIMIT` since it is an authenticated bcrypt oracle. A wrong current password answers 403 rather than 401: the caller is who they say they are and only failed the step-up, and a frontend that treats 401 as an expired session would sign them out over a typo. It revokes every refresh token the account holds, so other devices have to sign in again; access tokens already minted survive until they expire. Add a `password_changed_at` column and compare `iat` against it if you need that half hour closed too.
+`POST /api/v1/auth/password` changes a password and answers 204. It re-verifies the current password, because a leaked access token would otherwise be enough to take an account over for good, and it is rate limited with `LOGIN_RATE_LIMIT` since it is an authenticated bcrypt oracle. A wrong current password answers 403 rather than 401: the caller is who they say they are and only failed the step-up, and a frontend that treats 401 as an expired session would sign them out over a typo. It revokes every refresh token the account holds, and stamps `password_changed_at`, so the access tokens already minted stop working on their next request rather than surviving the half hour.
 
 `PATCH /api/v1/users/me` updates the display name and the address, answering 409 when the address is taken.
 
@@ -167,7 +167,7 @@ The token carries the target as `sub` and the real account under `act`, the acto
 
 Inside a borrowed session the writes that would widen anybody's reach are closed, whoever the target is: creating, updating or deleting a role, assigning one, and changing feature flags all answer 403, and impersonation cannot be chained. The guard sits inside `require_permission`, so a new admin route is covered the moment it declares the permission it needs. Three routes carry no permission of their own and are named explicitly — `PATCH /users/me`, which changes an email address without asking for a password, plus `POST /auth/password` and `DELETE /users/me`. Everything else writes normally: the point is to reproduce what the account can actually do.
 
-Stopping does not invalidate the token, and cannot — access tokens here are stateless, the same property a password change already carries. The endpoint exists to put the end of the session in the audit trail and to give the frontend one place to leave from; the 30 minutes are what bound the exposure. If revocation has to be real, store the `jti` and check it in `get_actor` only when `act` is present, which costs one SELECT on impersonated requests alone.
+Stopping does not invalidate the token, and cannot: nothing about the borrowed session is stored, and the one column a token is checked against belongs to the password rather than to the grant. The endpoint exists to put the end of the session in the audit trail and to give the frontend one place to leave from; the 30 minutes are what bound the exposure. If revocation has to be real, store the `jti` and check it in `get_actor` only when `act` is present, which costs one SELECT on impersonated requests alone.
 
 Both ends land in `audit_logs`, and so does everything done in between: a row written while impersonating carries the target in `actor_id` and the real account in `impersonator_id`. `request_logs` does not make that distinction — it records the target, because the access log reads the effective user — so the requests screen will name the wrong person and the audit trail is what answers for it.
 
@@ -194,7 +194,7 @@ Two guards, not one. The service compares the version it loaded, which catches t
 
 A client that retries a `POST` after a timeout has no way to know whether the first one landed. Send an `Idempotency-Key` header and this API answers the retry with the stored response instead of doing the work twice. The replayed response carries `Idempotent-Replay: true`, and the same key sent with a different body answers 409 rather than replaying an answer that no longer describes the request.
 
-The key is claimed before the route runs and released if the route fails, so a refused request does not burn it. A second call that arrives while the first is still running answers 409 as well: at most one of them is doing the work. Keys are scoped to the account that sent them, which is why `IdempotencyMiddleware` reads the bearer token itself — without the caller in the key, one account's retry could be answered with another account's response. A request with no valid token ignores the header.
+The key is claimed before the route runs and released if the route fails, so a refused request does not burn it. A second call that arrives while the first is still running answers 409 as well: at most one of them is doing the work. A claim nobody finished inside `IDEMPOTENCY_IN_FLIGHT_TIMEOUT_SECONDS` is taken over by the next retry, because a process that died holding a key should cost a retry rather than the key. Keys are scoped to the account that sent them, which is why `IdempotencyMiddleware` reads the bearer token itself — without the caller in the key, one account's retry could be answered with another account's response. A request with no valid token ignores the header, and so does a borrowed session: while impersonating, two people write as one account and a shared key space would be theirs to collide in.
 
 `IDEMPOTENCY_RETENTION_HOURS` bounds how long a key is remembered, and a job sweeps what ages out. The middleware stores answers up to 64 KiB and only JSON ones, so a file download is never held in the table.
 
@@ -208,7 +208,7 @@ Delivering to a real inbox is a different problem, and a container cannot solve 
 
 Two flows sit on top of it. Registration sends a confirmation link, `POST /api/v1/auth/email/verify` spends it, and an account can ask for another. `POST /api/v1/auth/password/forgot` sends a reset link and `POST /api/v1/auth/password/reset` spends it, setting the new password and revoking every refresh token the account holds, because a reset is what somebody does when they think the account is not theirs any more.
 
-Both links are single-use tokens from `secrets.token_urlsafe`, stored as a sha256 digest in `single_use_tokens` with a purpose and an expiry. Asking again retires the link already sent. A token is refused if it is expired, already spent, or carries the other purpose, so a confirmation link cannot be used to change a password.
+Both links are single-use tokens from `secrets.token_urlsafe`, stored as a sha256 digest in `single_use_tokens` with a purpose and an expiry. Asking again retires the link already sent, and `MAIL_RESEND_COOLDOWN_SECONDS` refuses to send a second one inside the window, which is what bounds how much mail one address receives however many callers ask on its behalf. A token is refused if it is expired, already spent, or carries the other purpose, so a confirmation link cannot be used to change a password.
 
 `REQUIRE_VERIFIED_EMAIL` decides whether an unconfirmed address can sign in. It ships off, so a clone works before a mail server exists; turn it on once one does.
 
@@ -224,7 +224,7 @@ The stored name is a generated key, never the submitted filename, so a name carr
 
 The retention scripts became jobs. `app/jobs/` holds the work, `app/core/jobs/scheduler.py` runs each one on its own interval inside the API process, and `JOBS_ENABLED` turns the whole thing off. There is no broker, because a template that needs Redis to start is a template that does not start.
 
-Every job takes a PostgreSQL advisory lock named after itself, so a second replica skips the run rather than doing it twice. A job that raises is logged and tried again on the next tick instead of killing the loop.
+Every job takes a PostgreSQL advisory lock named after `SERVICE_NAME` and the job, so a second replica skips the run rather than doing it twice, and two services sharing one database do not exclude each other over a name they happen to share. A job that raises is logged and tried again on the next tick instead of killing the loop.
 
 Four ship: pruning the audit log, pruning the request log, pruning spent idempotency keys, and deleting expired tokens. When the work outgrows an in-process loop, `Job.run` is the seam — point it at arq or taskiq and nothing else moves.
 
@@ -238,7 +238,7 @@ uv run fastapi-template seed
 uv run fastapi-template prune
 ```
 
-`app/cli/actions.py` holds the work and `app/cli/main.py` is the typer wiring, which is why the actions are covered by tests that never touch the terminal. typer arrives with `fastapi[standard]`, so this costs no dependency.
+`app/cli/actions.py` holds the work and `app/cli/main.py` is the typer wiring, which is why the actions are covered by tests that never touch the terminal. The password is always prompted for and never accepted as a flag, so it does not land in shell history. typer arrives with `fastapi[standard]`, so this costs no dependency.
 
 ## Starting your own project
 

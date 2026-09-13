@@ -162,3 +162,20 @@ async def test_a_reset_token_cannot_confirm_an_address() -> None:
 
     with pytest.raises(AuthError):
         await service.confirm("borrowed")
+
+
+async def test_asking_twice_in_a_row_sends_one_message() -> None:
+    user = _user()
+    mailer = FakeAccountMailer()
+    service = EmailVerificationService(
+        FakeUserRepository([user]),
+        FakeSingleUseTokenRepository(),
+        mailer,
+        lifetime=LIFETIME,
+        resend_cooldown=timedelta(minutes=1),
+    )
+
+    await service.request(user)
+    await service.request(user)
+
+    assert len(mailer.verifications) == 1

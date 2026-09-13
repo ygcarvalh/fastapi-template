@@ -17,14 +17,20 @@ def fingerprint(attempt: Attempt) -> str:
 
 
 class IdempotencyService:
-    def __init__(self, repo: IdempotencyRepositoryProtocol) -> None:
+    def __init__(
+        self,
+        repo: IdempotencyRepositoryProtocol,
+        *,
+        in_flight_timeout: timedelta = timedelta(seconds=60),
+    ) -> None:
         self._repo = repo
+        self._in_flight_timeout = in_flight_timeout
 
     async def claim(self, attempt: Attempt) -> Claim:
         request_hash = fingerprint(attempt)
         existing = await self._repo.get(attempt.user_id, attempt.key)
         if existing is not None:
-            return self._judge(existing, request_hash)
+            return await self._resolve(existing, request_hash)
 
         entry = IdempotencyKey(
             key=attempt.key,
@@ -39,7 +45,7 @@ class IdempotencyService:
         raced = await self._repo.get(attempt.user_id, attempt.key)
         if raced is None:
             return Claim(ClaimState.IN_FLIGHT)
-        return self._judge(raced, request_hash)
+        return await self._resolve(raced, request_hash)
 
     async def complete(self, user_id: int, key: str, response: StoredResponse) -> None:
         entry = await self._repo.get(user_id, key)
@@ -63,11 +69,14 @@ class IdempotencyService:
             datetime.now(UTC) - retention, batch_size
         )
 
-    @staticmethod
-    def _judge(entry: IdempotencyKey, request_hash: str) -> Claim:
+    async def _resolve(self, entry: IdempotencyKey, request_hash: str) -> Claim:
+        running = entry.completed_at is None or entry.status_code is None
+        if running and self._abandoned(entry):
+            await self._repo.restart(entry, request_hash, datetime.now(UTC))
+            return Claim(ClaimState.FRESH)
         if entry.request_hash != request_hash:
             return Claim(ClaimState.MISMATCH)
-        if entry.completed_at is None or entry.status_code is None:
+        if running or entry.status_code is None:
             return Claim(ClaimState.IN_FLIGHT)
         return Claim(
             ClaimState.REPLAY,
@@ -75,3 +84,11 @@ class IdempotencyService:
                 entry.status_code, entry.response_body or "", entry.content_type
             ),
         )
+
+    def _abandoned(self, entry: IdempotencyKey) -> bool:
+        started = entry.created_at
+        if started is None:
+            return False
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=UTC)
+        return datetime.now(UTC) - started > self._in_flight_timeout

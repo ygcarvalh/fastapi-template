@@ -144,6 +144,7 @@ class AuthService:
                 code=ErrorCode.AUTH_CURRENT_PASSWORD_INCORRECT,
             )
         user.hashed_password = hash_password(data.new_password)
+        user.password_changed_at = datetime.now(UTC)
         await self._users.save(user)
         await self.revoke_sessions(user)
 

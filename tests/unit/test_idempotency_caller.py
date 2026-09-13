@@ -1,7 +1,11 @@
 from fastapi import Request
 
 from app.api.idempotency_store import caller_of
-from app.core.security import create_access_token, create_refresh_token
+from app.core.security import (
+    create_access_token,
+    create_impersonation_token,
+    create_refresh_token,
+)
 
 
 def _request(authorization: str | None) -> Request:
@@ -33,3 +37,9 @@ def test_a_forged_token_means_no_caller() -> None:
 
 def test_a_refresh_token_cannot_reserve_a_key() -> None:
     assert caller_of(_request(f"Bearer {create_refresh_token('12')}")) is None
+
+
+def test_a_borrowed_session_reserves_no_key() -> None:
+    token = create_impersonation_token("12", "7")
+
+    assert caller_of(_request(f"Bearer {token}")) is None

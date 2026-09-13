@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import AuthError
 from app.core.security import decode_access_token
 from app.db.session import get_session_factory
@@ -17,13 +20,23 @@ def caller_of(request: Request) -> int | None:
         return None
     try:
         claims = decode_access_token(header[len(BEARER_PREFIX) :].strip())
+    except AuthError:
+        return None
+    if claims.impersonator is not None:
+        return None
+    try:
         return int(claims.subject)
-    except (AuthError, ValueError):
+    except ValueError:
         return None
 
 
 def _service(session: AsyncSession) -> IdempotencyService:
-    return IdempotencyService(IdempotencyRepository(session))
+    return IdempotencyService(
+        IdempotencyRepository(session),
+        in_flight_timeout=timedelta(
+            seconds=get_settings().idempotency_in_flight_timeout_seconds
+        ),
+    )
 
 
 class DatabaseIdempotencyStore:

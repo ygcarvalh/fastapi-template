@@ -15,6 +15,7 @@ from app.services.protocols import (
     SingleUseTokenRepositoryProtocol,
     UserRepositoryProtocol,
 )
+from app.services.single_use_tokens import issued_within
 
 INVALID_TOKEN = "This reset link is no longer valid"
 
@@ -28,12 +29,14 @@ class PasswordResetService:
         mailer: AccountMailerProtocol,
         *,
         lifetime: timedelta,
+        resend_cooldown: timedelta = timedelta(0),
     ) -> None:
         self._users = users
         self._tokens = tokens
         self._sessions = sessions
         self._mailer = mailer
         self._lifetime = lifetime
+        self._resend_cooldown = resend_cooldown
 
     async def request(self, email: str) -> None:
         user = await self._users.get_by_email(normalize_email(email))
@@ -41,6 +44,8 @@ class PasswordResetService:
             return
 
         now = datetime.now(UTC)
+        if await self._sent_recently(user.id, now):
+            return
         await self._tokens.revoke_all_for(user.id, TokenPurpose.PASSWORD_RESET, now)
         token = new_single_use_token()
         expires_at = now + self._lifetime
@@ -53,6 +58,12 @@ class PasswordResetService:
             )
         )
         await self._mailer.send_password_reset(user, token, expires_at)
+
+    async def _sent_recently(self, user_id: int, now: datetime) -> bool:
+        if not self._resend_cooldown:
+            return False
+        latest = await self._tokens.latest_for(user_id, TokenPurpose.PASSWORD_RESET)
+        return latest is not None and issued_within(latest, now, self._resend_cooldown)
 
     async def confirm(self, token: str, new_password: str) -> None:
         now = datetime.now(UTC)
@@ -67,6 +78,7 @@ class PasswordResetService:
             raise AuthError(INVALID_TOKEN, code=ErrorCode.AUTH_INVALID_TOKEN)
 
         user.hashed_password = hash_password(new_password)
+        user.password_changed_at = now
         await self._users.save(user)
         await self._tokens.mark_used(stored, now)
         await self._tokens.revoke_all_for(user.id, TokenPurpose.PASSWORD_RESET, now)

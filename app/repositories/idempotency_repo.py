@@ -32,6 +32,17 @@ class IdempotencyRepository:
             return None
         return entry
 
+    async def restart(
+        self, entry: IdempotencyKey, request_hash: str, now: datetime
+    ) -> None:
+        entry.request_hash = request_hash
+        entry.created_at = now
+        entry.status_code = None
+        entry.response_body = None
+        entry.content_type = None
+        entry.completed_at = None
+        await self._session.flush()
+
     async def complete(
         self,
         entry: IdempotencyKey,

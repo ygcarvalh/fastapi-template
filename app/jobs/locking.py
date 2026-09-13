@@ -5,6 +5,8 @@ from zlib import crc32
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+
 LOCK = text("SELECT pg_try_advisory_lock(:key)")
 UNLOCK = text("SELECT pg_advisory_unlock(:key)")
 
@@ -12,7 +14,9 @@ SIGNED_32_BIT_OFFSET = 2**31
 
 
 def lock_key(name: str) -> int:
-    return crc32(name.encode()) - SIGNED_32_BIT_OFFSET
+    return (
+        crc32(f"{get_settings().service_name}:{name}".encode()) - SIGNED_32_BIT_OFFSET
+    )
 
 
 @asynccontextmanager

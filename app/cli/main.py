@@ -25,10 +25,8 @@ def _run[T](work: Coroutine[Any, Any, T]) -> T:
 
 
 @cli.command("create-superuser", help="Register an account holding every permission.")
-def create_superuser(
-    email: str = typer.Option(..., prompt=True),
-    password: str = typer.Option(..., prompt=True, hide_input=True),
-) -> None:
+def create_superuser(email: str = typer.Option(..., prompt=True)) -> None:
+    password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
     typer.echo(_run(actions.create_superuser(email, password)))
 
 

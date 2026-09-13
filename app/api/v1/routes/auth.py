@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import (
@@ -14,6 +14,7 @@ from app.api.deps import (
     UserServiceDep,
     require_permission,
 )
+from app.api.mail_tasks import send_password_reset
 from app.core.authorization import IMPERSONATE, USERS
 from app.core.config import get_settings
 from app.core.http.rate_limit import limiter
@@ -124,9 +125,9 @@ async def change_password(
 )
 @limiter.limit(lambda: get_settings().mail_rate_limit)
 async def forgot_password(
-    request: Request, data: PasswordResetRequest, service: PasswordResetServiceDep
+    request: Request, data: PasswordResetRequest, background: BackgroundTasks
 ) -> None:
-    await service.request(data.email)
+    background.add_task(send_password_reset, data.email)
 
 
 @public_router.post("/password/reset", status_code=status.HTTP_204_NO_CONTENT)

@@ -38,6 +38,9 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     roles: Mapped[list[Role]] = relationship(
         secondary=user_roles, lazy="selectin", order_by=Role.name
     )

@@ -34,6 +34,7 @@ SINGLE_USE_TOKEN_BYTES = 32
 class AccessClaims(NamedTuple):
     subject: str
     impersonator: str | None
+    issued_at: datetime
 
 
 def hash_password(password: str) -> str:
@@ -123,6 +124,13 @@ def _decode(token: str, expected_type: TokenType) -> dict[str, Any]:
     return payload
 
 
+def _issued_at(payload: dict[str, Any]) -> datetime:
+    issued = payload.get("iat")
+    if not isinstance(issued, int):
+        raise invalid_credentials()
+    return datetime.fromtimestamp(issued, UTC)
+
+
 def _impersonator_of(payload: dict[str, Any]) -> str | None:
     actor = payload.get(IMPERSONATOR_CLAIM)
     if actor is None:
@@ -134,7 +142,9 @@ def _impersonator_of(payload: dict[str, Any]) -> str | None:
 
 def decode_access_token(token: str) -> AccessClaims:
     payload = _decode(token, ACCESS_TOKEN_TYPE)
-    return AccessClaims(str(payload["sub"]), _impersonator_of(payload))
+    return AccessClaims(
+        str(payload["sub"]), _impersonator_of(payload), _issued_at(payload)
+    )
 
 
 def decode_refresh_token(token: str) -> str:

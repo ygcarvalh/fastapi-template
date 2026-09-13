@@ -225,3 +225,14 @@ async def test_an_unconfirmed_address_signs_in_where_that_is_not_required() -> N
     service = _service([_registered_user()])
 
     assert await service.authenticate(EMAIL, PASSWORD)
+
+
+async def test_changing_a_password_stamps_when_it_happened() -> None:
+    user = _registered_user()
+    service = _service([user])
+
+    await service.change_password(
+        user, PasswordChange(current_password=PASSWORD, new_password="another-secret")
+    )
+
+    assert user.password_changed_at is not None

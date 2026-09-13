@@ -120,3 +120,48 @@ def test_the_fingerprint_covers_method_path_and_body() -> None:
     assert fingerprint(base) != fingerprint(
         Attempt(USER_ID, KEY, "PATCH", "/api/v1/items", base.body)
     )
+
+
+async def test_a_claim_nobody_finished_is_taken_over_once_it_is_stale() -> None:
+    repo = FakeIdempotencyRepository()
+    service = IdempotencyService(repo, in_flight_timeout=timedelta(seconds=30))
+    await service.claim(_attempt())
+    abandoned = await repo.get(USER_ID, KEY)
+    assert abandoned is not None
+    abandoned.created_at = datetime.now(UTC) - timedelta(minutes=5)
+
+    assert (await service.claim(_attempt())).state is ClaimState.FRESH
+
+
+async def test_a_claim_still_inside_its_window_is_left_alone() -> None:
+    service = IdempotencyService(
+        FakeIdempotencyRepository(), in_flight_timeout=timedelta(minutes=5)
+    )
+    await service.claim(_attempt())
+
+    assert (await service.claim(_attempt())).state is ClaimState.IN_FLIGHT
+
+
+async def test_taking_a_stale_claim_over_accepts_the_body_it_now_carries() -> None:
+    repo = FakeIdempotencyRepository()
+    service = IdempotencyService(repo, in_flight_timeout=timedelta(seconds=30))
+    await service.claim(_attempt())
+    abandoned = await repo.get(USER_ID, KEY)
+    assert abandoned is not None
+    abandoned.created_at = datetime.now(UTC) - timedelta(minutes=5)
+
+    claim = await service.claim(_attempt(body=b'{"title":"two"}'))
+
+    assert claim.state is ClaimState.FRESH
+
+
+async def test_a_finished_claim_is_never_taken_over_however_old_it_is() -> None:
+    repo = FakeIdempotencyRepository()
+    service = IdempotencyService(repo, in_flight_timeout=timedelta(seconds=30))
+    await service.claim(_attempt())
+    await service.complete(USER_ID, KEY, CREATED)
+    stored = await repo.get(USER_ID, KEY)
+    assert stored is not None
+    stored.created_at = datetime.now(UTC) - timedelta(days=1)
+
+    assert (await service.claim(_attempt())).state is ClaimState.REPLAY

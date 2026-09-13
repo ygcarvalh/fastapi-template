@@ -30,6 +30,18 @@ class SingleUseTokenRepository:
         )
         return result.scalar_one_or_none()
 
+    async def latest_for(self, user_id: int, purpose: str) -> SingleUseToken | None:
+        result = await self._session.execute(
+            select(SingleUseToken)
+            .where(
+                SingleUseToken.user_id == user_id,
+                SingleUseToken.purpose == purpose,
+            )
+            .order_by(SingleUseToken.created_at.desc(), SingleUseToken.id.desc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
     async def mark_used(self, token: SingleUseToken, now: datetime) -> None:
         token.used_at = now
         await self._session.flush()

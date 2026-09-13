@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Annotated
 
@@ -91,6 +91,7 @@ def get_email_verification_service(session: SessionDep) -> EmailVerificationServ
         SingleUseTokenRepository(session),
         get_account_mailer(session),
         lifetime=timedelta(hours=get_settings().email_verification_expire_hours),
+        resend_cooldown=timedelta(seconds=get_settings().mail_resend_cooldown_seconds),
     )
 
 
@@ -106,6 +107,7 @@ def get_password_reset_service(session: SessionDep) -> PasswordResetService:
         RefreshTokenRepository(session),
         get_account_mailer(session),
         lifetime=timedelta(minutes=get_settings().password_reset_expire_minutes),
+        resend_cooldown=timedelta(seconds=get_settings().mail_resend_cooldown_seconds),
     )
 
 
@@ -191,15 +193,25 @@ class Actor:
         return None if self.impersonator is None else self.impersonator.id
 
 
-async def _load(service: UserService, subject: str) -> User:
+def _password_moved_after(user: User, issued_at: datetime) -> bool:
+    changed = user.password_changed_at
+    if changed is None:
+        return False
+    return changed.replace(microsecond=0) > issued_at
+
+
+async def _load(service: UserService, subject: str, issued_at: datetime) -> User:
     try:
         user_id = int(subject)
     except ValueError as exc:
         raise invalid_credentials() from exc
     try:
-        return await service.get(user_id)
+        user = await service.get(user_id)
     except NotFoundError as exc:
         raise invalid_credentials() from exc
+    if _password_moved_after(user, issued_at):
+        raise invalid_credentials()
+    return user
 
 
 async def get_actor(
@@ -208,11 +220,11 @@ async def get_actor(
     service: UserServiceDep,
 ) -> Actor:
     claims = decode_access_token(token)
-    user = await _load(service, claims.subject)
+    user = await _load(service, claims.subject, claims.issued_at)
     impersonator = (
         None
         if claims.impersonator is None
-        else await _load(service, claims.impersonator)
+        else await _load(service, claims.impersonator, claims.issued_at)
     )
     if impersonator is not None and not may_impersonate(impersonator, user):
         raise ForbiddenError(

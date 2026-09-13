@@ -127,3 +127,55 @@ async def test_an_expired_link_is_refused() -> None:
 
     with pytest.raises(AuthError):
         await service.confirm(mailer.resets[0][1], NEW_PASSWORD)
+
+
+def _service_with_cooldown(
+    user: User, cooldown: timedelta
+) -> tuple[PasswordResetService, FakeAccountMailer]:
+    mailer = FakeAccountMailer()
+    service = PasswordResetService(
+        FakeUserRepository([user]),
+        FakeSingleUseTokenRepository(),
+        FakeRefreshTokenRepository(),
+        mailer,
+        lifetime=LIFETIME,
+        resend_cooldown=cooldown,
+    )
+    return service, mailer
+
+
+async def test_a_reset_ends_the_access_tokens_already_minted() -> None:
+    user = _user()
+    service, _, mailer = _service(user)
+    await service.request(EMAIL)
+
+    await service.confirm(mailer.resets[0][1], NEW_PASSWORD)
+
+    assert user.password_changed_at is not None
+
+
+async def test_asking_twice_in_a_row_sends_one_message() -> None:
+    service, mailer = _service_with_cooldown(_user(), timedelta(minutes=1))
+
+    await service.request(EMAIL)
+    await service.request(EMAIL)
+
+    assert len(mailer.resets) == 1
+
+
+async def test_the_cooldown_lets_go_once_it_has_passed() -> None:
+    service, mailer = _service_with_cooldown(_user(), timedelta(seconds=0))
+
+    await service.request(EMAIL)
+    await service.request(EMAIL)
+
+    assert len(mailer.resets) == 2
+
+
+async def test_a_cooled_down_request_still_answers_with_silence() -> None:
+    service, mailer = _service_with_cooldown(_user(), timedelta(minutes=1))
+    await service.request(EMAIL)
+
+    await service.request("stranger@example.com")
+
+    assert len(mailer.resets) == 1

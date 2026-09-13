@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.core.authorization import BASE_ROLES
 from app.models.audit_log import AuditLog
@@ -391,8 +391,20 @@ class FakeIdempotencyRepository:
         if await self.get(entry.user_id, entry.key) is not None:
             return None
         entry.id = len(self._entries) + 1
+        if entry.created_at is None:
+            entry.created_at = datetime.now(UTC)
         self._entries.append(entry)
         return entry
+
+    async def restart(
+        self, entry: IdempotencyKey, request_hash: str, now: datetime
+    ) -> None:
+        entry.request_hash = request_hash
+        entry.created_at = now
+        entry.status_code = None
+        entry.response_body = None
+        entry.content_type = None
+        entry.completed_at = None
 
     async def complete(
         self,
@@ -429,8 +441,18 @@ class FakeSingleUseTokenRepository:
 
     async def create(self, token: SingleUseToken) -> SingleUseToken:
         token.id = len(self._tokens) + 1
+        if token.created_at is None:
+            token.created_at = datetime.now(UTC)
         self._tokens.append(token)
         return token
+
+    async def latest_for(self, user_id: int, purpose: str) -> SingleUseToken | None:
+        issued = [
+            token
+            for token in self._tokens
+            if token.user_id == user_id and token.purpose == purpose
+        ]
+        return issued[-1] if issued else None
 
     async def get_active(
         self, token_hash: str, purpose: str, now: datetime

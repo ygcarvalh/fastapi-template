@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     jobs_startup_delay_seconds: Annotated[int, Field(ge=0)] = 30
     idempotency_enabled: bool = True
     idempotency_retention_hours: Annotated[int, Field(gt=0)] = 24
+    idempotency_in_flight_timeout_seconds: Annotated[int, Field(gt=0)] = 60
 
     app_base_url: str = "http://localhost:4200"
     storage_root: str = "var/uploads"
@@ -59,6 +60,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_starttls: bool = True
     email_verification_expire_hours: Annotated[int, Field(gt=0)] = 48
+    mail_resend_cooldown_seconds: Annotated[int, Field(ge=0)] = 60
     password_reset_expire_minutes: Annotated[int, Field(gt=0)] = 60
     require_verified_email: bool = False
 

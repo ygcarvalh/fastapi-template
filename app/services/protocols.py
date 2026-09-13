@@ -81,6 +81,10 @@ class IdempotencyRepositoryProtocol(Protocol):
 
     async def claim(self, entry: IdempotencyKey) -> IdempotencyKey | None: ...
 
+    async def restart(
+        self, entry: IdempotencyKey, request_hash: str, now: datetime
+    ) -> None: ...
+
     async def complete(
         self,
         entry: IdempotencyKey,
@@ -146,6 +150,8 @@ class SingleUseTokenRepositoryProtocol(Protocol):
     async def get_active(
         self, token_hash: str, purpose: str, now: datetime
     ) -> SingleUseToken | None: ...
+
+    async def latest_for(self, user_id: int, purpose: str) -> SingleUseToken | None: ...
 
     async def mark_used(self, token: SingleUseToken, now: datetime) -> None: ...
 
