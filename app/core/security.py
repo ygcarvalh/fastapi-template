@@ -1,4 +1,5 @@
 import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, NamedTuple
 from uuid import uuid4
@@ -27,6 +28,8 @@ def invalid_credentials() -> AuthError:
 
 IMPERSONATOR_CLAIM = "act"
 
+SINGLE_USE_TOKEN_BYTES = 32
+
 
 class AccessClaims(NamedTuple):
     subject: str
@@ -44,6 +47,14 @@ def verify_password(password: str, hashed: str) -> bool:
 # A digest, not a password hash: the token is already high-entropy, and the
 # lookup that checks it has to be deterministic.
 def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def new_single_use_token() -> str:
+    return secrets.token_urlsafe(SINGLE_USE_TOKEN_BYTES)
+
+
+def hash_single_use_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 

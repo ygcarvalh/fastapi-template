@@ -182,3 +182,46 @@ async def test_changing_the_password_needs_the_current_one() -> None:
 
     assert verify_password(PASSWORD, user.hashed_password)
     assert await service.refresh(pair.refresh_token)
+
+
+def _strict_service(users: Sequence[User]) -> AuthService:
+    return AuthService(
+        FakeUserRepository(users),
+        FakeRefreshTokenRepository(),
+        FakeAuditLogRepository(),
+        require_verified_email=True,
+    )
+
+
+async def test_an_unconfirmed_address_cannot_sign_in_where_that_is_required() -> None:
+    service = _strict_service([_registered_user()])
+
+    with pytest.raises(AuthError) as raised:
+        await service.authenticate(EMAIL, PASSWORD)
+
+    assert raised.value.code == "auth.emailNotVerified"
+
+
+async def test_a_confirmed_address_signs_in_where_that_is_required() -> None:
+    user = _registered_user()
+    user.email_verified_at = NOW
+    service = _strict_service([user])
+
+    pair = await service.authenticate(EMAIL, PASSWORD)
+
+    assert pair.access_token
+
+
+async def test_a_wrong_password_is_refused_before_the_address_is_checked() -> None:
+    service = _strict_service([_registered_user()])
+
+    with pytest.raises(AuthError) as raised:
+        await service.authenticate(EMAIL, "wrong")
+
+    assert raised.value.code == "auth.badLogin"
+
+
+async def test_an_unconfirmed_address_signs_in_where_that_is_not_required() -> None:
+    service = _service([_registered_user()])
+
+    assert await service.authenticate(EMAIL, PASSWORD)

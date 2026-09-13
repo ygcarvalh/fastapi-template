@@ -1,13 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import (
     AuthServiceDep,
     CurrentActor,
     CurrentUser,
+    EmailVerificationServiceDep,
     ForbidImpersonation,
+    PasswordResetServiceDep,
     RequireAuth,
     UserServiceDep,
     require_permission,
@@ -16,7 +18,14 @@ from app.core.authorization import IMPERSONATE, USERS
 from app.core.config import get_settings
 from app.core.http.rate_limit import limiter
 from app.models.role import Scope
-from app.schemas.auth import ImpersonationToken, RefreshRequest, Token
+from app.schemas.auth import (
+    EmailVerificationConfirm,
+    ImpersonationToken,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    RefreshRequest,
+    Token,
+)
 from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.user import PasswordChange, UserRead
 from app.services.auth_service import TokenPair
@@ -106,3 +115,48 @@ async def change_password(
     service: AuthServiceDep,
 ) -> None:
     await service.change_password(current_user, data)
+
+
+@public_router.post(
+    "/password/forgot",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_class=Response,
+)
+@limiter.limit(lambda: get_settings().mail_rate_limit)
+async def forgot_password(
+    request: Request, data: PasswordResetRequest, service: PasswordResetServiceDep
+) -> None:
+    await service.request(data.email)
+
+
+@public_router.post("/password/reset", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(lambda: get_settings().mail_rate_limit)
+async def reset_password(
+    request: Request, data: PasswordResetConfirm, service: PasswordResetServiceDep
+) -> None:
+    await service.confirm(data.token, data.new_password)
+
+
+@public_router.post("/email/verify", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(lambda: get_settings().mail_rate_limit)
+async def verify_email(
+    request: Request,
+    data: EmailVerificationConfirm,
+    service: EmailVerificationServiceDep,
+) -> None:
+    await service.confirm(data.token)
+
+
+@private_router.post(
+    "/email/verify/resend",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_class=Response,
+    dependencies=[ForbidImpersonation],
+)
+@limiter.limit(lambda: get_settings().mail_rate_limit)
+async def resend_email_verification(
+    request: Request,
+    current_user: CurrentUser,
+    service: EmailVerificationServiceDep,
+) -> None:
+    await service.request(current_user)

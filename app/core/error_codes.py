@@ -13,6 +13,9 @@ class ErrorCode(StrEnum):
     PAYLOAD_TOO_LARGE = "error.payloadTooLarge"
     PRECONDITION_REQUIRED = "error.preconditionRequired"
     VERSION_CONFLICT = "error.versionConflict"
+    IDEMPOTENCY_INVALID_KEY = "idempotency.invalidKey"
+    IDEMPOTENCY_BODY_MISMATCH = "idempotency.bodyMismatch"
+    IDEMPOTENCY_IN_FLIGHT = "idempotency.inFlight"
 
     AUTH_INVALID_CREDENTIALS = "auth.invalidCredentials"
     AUTH_BAD_LOGIN = "auth.badLogin"
@@ -21,6 +24,8 @@ class ErrorCode(StrEnum):
     AUTH_IMPERSONATION_REVOKED = "auth.impersonationRevoked"
     AUTH_IMPERSONATION_BLOCKED = "auth.impersonationBlocked"
     AUTH_INSUFFICIENT_PERMISSIONS = "auth.insufficientPermissions"
+    AUTH_INVALID_TOKEN = "auth.invalidToken"
+    AUTH_EMAIL_NOT_VERIFIED = "auth.emailNotVerified"
 
     ITEM_NOT_FOUND = "item.notFound"
 

@@ -29,6 +29,8 @@ from app.services.protocols import (
 
 SECONDS_PER_MINUTE = 60
 
+EMAIL_NOT_VERIFIED = "Confirm your email address before signing in"
+
 
 class TokenPair(NamedTuple):
     access_token: str
@@ -51,10 +53,13 @@ class AuthService:
         users: UserRepositoryProtocol,
         tokens: RefreshTokenRepositoryProtocol,
         audit: AuditLogRepositoryProtocol,
+        *,
+        require_verified_email: bool = False,
     ) -> None:
         self._users = users
         self._tokens = tokens
         self._audit = audit
+        self._require_verified_email = require_verified_email
 
     async def authenticate(self, email: str, password: str) -> TokenPair:
         user = await self._users.get_by_email(normalize_email(email))
@@ -64,6 +69,8 @@ class AuthService:
             raise AuthError(
                 "Incorrect email or password", code=ErrorCode.AUTH_BAD_LOGIN
             )
+        if self._require_verified_email and user.email_verified_at is None:
+            raise AuthError(EMAIL_NOT_VERIFIED, code=ErrorCode.AUTH_EMAIL_NOT_VERIFIED)
         return await self._issue(user)
 
     # The refresh token is not rotated. The frontend refreshes from two places,

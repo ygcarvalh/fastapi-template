@@ -108,6 +108,7 @@ class UserRead(BaseModel):
     email: EmailStr
     name: str | None
     roles: list[str]
+    email_verified_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

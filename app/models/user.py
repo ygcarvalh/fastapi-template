@@ -1,7 +1,8 @@
+from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Index, String, text
+from sqlalchemy import DateTime, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -34,6 +35,9 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     email: Mapped[str] = mapped_column(String(255))
     name: Mapped[str | None] = mapped_column(String(NAME_LENGTH), default=None)
     hashed_password: Mapped[str] = mapped_column(String(255))
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     roles: Mapped[list[Role]] = relationship(
         secondary=user_roles, lazy="selectin", order_by=Role.name
     )

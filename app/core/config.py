@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     hsts_enabled: bool = False
     login_rate_limit: str = "10/minute"
     register_rate_limit: str = "5/minute"
+    mail_rate_limit: str = "5/hour"
 
     service_name: str = "fastapi-template"
     log_level: str = "INFO"
@@ -35,6 +36,23 @@ class Settings(BaseSettings):
     request_log_persist_enabled: bool = True
     feature_flags: str = "items,request-log,audit-log"
     audit_log_retention_days: int = 365
+    request_log_retention_days: int = 30
+    jobs_enabled: bool = True
+    jobs_startup_delay_seconds: Annotated[int, Field(ge=0)] = 30
+    idempotency_enabled: bool = True
+    idempotency_retention_hours: Annotated[int, Field(gt=0)] = 24
+
+    app_base_url: str = "http://localhost:4200"
+    mail_backend: Literal["log", "smtp"] = "log"
+    mail_from: str = "no-reply@example.com"
+    smtp_host: str = "localhost"
+    smtp_port: Annotated[int, Field(gt=0, le=65535)] = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_starttls: bool = True
+    email_verification_expire_hours: Annotated[int, Field(gt=0)] = 48
+    password_reset_expire_minutes: Annotated[int, Field(gt=0)] = 60
+    require_verified_email: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:

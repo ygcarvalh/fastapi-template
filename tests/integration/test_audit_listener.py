@@ -82,7 +82,10 @@ async def test_a_soft_delete_is_not_filed_as_an_ordinary_update(
     auth_client: AsyncClient, db_session: AsyncSession
 ) -> None:
     created = await auth_client.post("/api/v1/items", json={"title": "doomed"})
-    await auth_client.delete(f"/api/v1/items/{created.json()['id']}")
+    await auth_client.delete(
+        f"/api/v1/items/{created.json()['id']}",
+        headers={"If-Match": created.headers["etag"]},
+    )
 
     rows = await _rows(db_session, "items")
     assert [row.action for row in rows] == [

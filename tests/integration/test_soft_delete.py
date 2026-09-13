@@ -21,11 +21,14 @@ async def _login(client: AsyncClient, email: str, password: str) -> int:
 async def test_deleting_an_item_keeps_the_row_and_stamps_it(
     auth_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    item_id = (
-        await auth_client.post("/api/v1/items", json={"title": "retire me"})
-    ).json()["id"]
+    created = await auth_client.post("/api/v1/items", json={"title": "retire me"})
+    item_id = created.json()["id"]
 
-    assert (await auth_client.delete(f"/api/v1/items/{item_id}")).status_code == 204
+    deleted = await auth_client.delete(
+        f"/api/v1/items/{item_id}", headers={"If-Match": created.headers["etag"]}
+    )
+
+    assert deleted.status_code == 204
 
     stored = await db_session.execute(select(Item).where(Item.id == item_id))
     item = stored.scalar_one()
@@ -35,10 +38,11 @@ async def test_deleting_an_item_keeps_the_row_and_stamps_it(
 async def test_deleted_items_disappear_from_listings(
     auth_client: AsyncClient,
 ) -> None:
-    item_id = (await auth_client.post("/api/v1/items", json={"title": "gone"})).json()[
-        "id"
-    ]
-    await auth_client.delete(f"/api/v1/items/{item_id}")
+    created = await auth_client.post("/api/v1/items", json={"title": "gone"})
+    await auth_client.delete(
+        f"/api/v1/items/{created.json()['id']}",
+        headers={"If-Match": created.headers["etag"]},
+    )
 
     body = (await auth_client.get("/api/v1/items")).json()
 
