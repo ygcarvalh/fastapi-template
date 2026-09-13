@@ -47,15 +47,27 @@ Login does not reveal whether an account exists. A wrong password and an unknown
 
 Registration answers 409 when an address is already taken, from the check *and* from the write. The check cannot close the race on its own, so a unique violation raised by the flush is read and turned into the same 409 — any other constraint failure stays a 500, because that one is a bug rather than a conflict.
 
-Registration does reveal existence, then, by answering 409 when an address is already taken. That is a deliberate trade for a usable signup form, and it is the one place the template leaks account existence. Closing it properly means answering 202 either way and sending a verification email, which needs a mail provider and a tokens table.
+Registration does reveal existence, then, by answering 409 when an address is already taken. That is a deliberate trade for a usable signup form, and it is the one place the template leaks account existence. The pieces that would close it are now here — `single_use_tokens`, a mailer, and a confirmation endpoint — so the remaining work is the product decision to answer 202 either way and let the mail say which of the two things happened.
+
+`POST /api/v1/auth/password/forgot` already answers that way. It returns 202 with an empty body whether or not the address has an account, and only sends mail in the case where it does. What it does not close is timing: the branch that has an account writes a row and sends a message, so a caller with a stopwatch can still tell the two apart. Closing that means answering before the work, which needs a queue.
 
 Every failing response has the same shape, whatever raised it:
 
 ```json
-{"detail": "Email already registered", "message": "Email already registered", "request_id": "ab8f2c1d4e"}
+{
+  "detail": "Email already registered",
+  "message": "Email already registered",
+  "code": "user.emailTaken",
+  "params": {},
+  "request_id": "ab8f2c1d4e"
+}
 ```
 
-`detail` is what the previous version returned, kept so a client that reads it keeps working. `message` is one sentence a frontend can put in front of a person. `request_id` is the correlation ID, which is also on the `X-Request-ID` header of the same response — including on a 500, where Starlette answers above the middleware that would otherwise set it, so the handler sets it itself.
+`detail` is what the previous version returned, kept so a client that reads it keeps working. `message` is one sentence a frontend can put in front of a person, in English. `code` is the same failure named in a way a client can translate, and `params` carries whatever that sentence interpolates. `request_id` is the correlation ID, which is also on the `X-Request-ID` header of the same response — including on a 500, where Starlette answers above the middleware that would otherwise set it, so the handler sets it itself.
+
+The code is what makes a second language possible without asking the API to speak it. `app/core/error_codes.py` holds every code as an enum, `DomainError` carries one, and each raise site names the precise one — `NotFoundError("Item not found", code=ErrorCode.ITEM_NOT_FOUND)`. Because the field is typed as `ErrorCode`, mypy refuses a code nobody declared. A client looks the code up in its own dictionary and falls back to `message` when it does not recognize it, so an older frontend against a newer API degrades to English instead of to a blank space.
+
+A 422 is the one failure with no single code to translate, so each entry in `detail` keeps pydantic's `type` and gains `ctx`, the numbers the message interpolates. A client translates by type — `string_too_short` with `{"min_length": 8}` — and names the field from `loc`. `ctx` is filtered to plain scalars on the way out, because pydantic also puts the original exception in there and that must not travel to a client.
 
 Domain errors reuse their own detail as the message; 422, 429 and 500 carry a fixed sentence. Framework errors go through the same handler, so the 401 from the bearer scheme and the 404 for an unrouted path arrive in that shape too. `app/schemas/error.py` holds the models, and they are attached to the v1 router, so `/docs` shows the envelope instead of FastAPI's `HTTPValidationError`.
 
@@ -75,7 +87,7 @@ Every response carries `Cache-Control: no-store`. The API answers JSON that is e
 
 CSRF protection is absent deliberately. Authentication is bearer-token only and nothing sets a cookie, so a cross-site request has nothing to ride on. Add it if you introduce cookie sessions. CORS is off by default for the same reason it is safe to leave alone: with no origins allowed, browsers block cross-origin calls. When the frontend lives on another origin, set `CORS_ORIGINS` to a comma-separated list of named origins, and `app/core/http/cors.py` adds `CORSMiddleware` with those origins, no credentials, and `X-Request-ID` in `Access-Control-Expose-Headers`, without which a browser never sees the correlation ID it is meant to show the reader. A `*` in the list refuses to start.
 
-Rate limits on the auth endpoints come from `LOGIN_RATE_LIMIT` and `REGISTER_RATE_LIMIT`; login, refresh, logout and password change share the first. The default limiter counts in memory, so counts reset on restart and are per worker. Point slowapi at Redis before running more than one.
+Rate limits on the auth endpoints come from `LOGIN_RATE_LIMIT`, `REGISTER_RATE_LIMIT` and `MAIL_RATE_LIMIT`; login, refresh, logout and password change share the first, and everything that can make the service send a message shares the last. The limiter counts wherever `RATE_LIMIT_STORAGE_URI` points, and empty means in this process: counts reset on restart and each worker allows the whole limit on its own. Set it to `redis://host:6379` before running a second replica, which is a configuration change rather than a code one.
 
 The limiter and the request log both key on the client address, and behind a reverse proxy that address is the proxy's unless uvicorn is told which proxies to believe. Compose starts uvicorn with `--proxy-headers` and passes `FORWARDED_ALLOW_IPS` through, empty by default: with nothing trusted, `X-Forwarded-For` is ignored, so a caller cannot choose its own address to escape the limit. Set it to the proxy's address in production.
 
@@ -170,6 +182,74 @@ Two details are easy to get wrong:
 
 Deactivation ends access immediately: `get_by_email` and `get` both filter deleted rows, so a deactivated account cannot log in and an already issued token stops working on the next request.
 
+## Concurrent writes
+
+An item carries a `version`. `GET /api/v1/items/{id}` answers with it in the body and as a weak `ETag`, and `PATCH` and `DELETE` require the reader to send it back as `If-Match`. A write against the version you read goes through and the version moves; a write against an older one answers 412 with `error.versionConflict` and the two numbers in `params`, so a frontend can say which version is current instead of saying that something went wrong. A write with no `If-Match` at all answers 428, because silently overwriting is the outcome the header exists to prevent.
+
+Two guards, not one. The service compares the version it loaded, which catches the ordinary case of a stale form. Underneath, `VersionMixin` sets SQLAlchemy's `version_id_col`, so the UPDATE carries `WHERE version = ?` and a second transaction that commits in between loses the race at the database rather than in Python. The repository turns that `StaleDataError` into the same 412.
+
+`version` sits in `app/db/mixins.py` next to the timestamp and soft-delete mixins, and `Item` is the only model that uses it. Adding it to a model of your own is one mixin and one migration. Adding it to a table that already has rows in production is a migration plus a rewrite of every write path, which is why it is here from the start on the slice meant to be copied.
+
+## Idempotent writes
+
+A client that retries a `POST` after a timeout has no way to know whether the first one landed. Send an `Idempotency-Key` header and this API answers the retry with the stored response instead of doing the work twice. The replayed response carries `Idempotent-Replay: true`, and the same key sent with a different body answers 409 rather than replaying an answer that no longer describes the request.
+
+The key is claimed before the route runs and released if the route fails, so a refused request does not burn it. A second call that arrives while the first is still running answers 409 as well: at most one of them is doing the work. Keys are scoped to the account that sent them, which is why `IdempotencyMiddleware` reads the bearer token itself — without the caller in the key, one account's retry could be answered with another account's response. A request with no valid token ignores the header.
+
+`IDEMPOTENCY_RETENTION_HOURS` bounds how long a key is remembered, and a job sweeps what ages out. The middleware stores answers up to 64 KiB and only JSON ones, so a file download is never held in the table.
+
+## Mail, confirmation and password reset
+
+`MailSender` is a protocol with two implementations. `MAIL_BACKEND=log` writes the whole message to the structured log, which is how you read a confirmation link with nothing else running; `MAIL_BACKEND=smtp` sends it through stdlib `smtplib` on a worker thread. Leaving it on `log` in production would put reset links in the logs, which is the one thing to remember about this setting.
+
+Compose brings up Mailpit and points the API at it, so a clone speaks real SMTP from the first `docker compose up` with no account anywhere. Every message the API sends lands at http://127.0.0.1:8025 and nowhere else, which is what you want while testing a registration flow against addresses you invented.
+
+Delivering to a real inbox is a different problem, and a container cannot solve it: reaching Gmail needs a domain with SPF, DKIM and DMARC, outbound port 25 that your network does not block, and an IP nobody has burned. So the path to real mail is a provider, and Mailpit already knows how to be the bridge. Give it `MP_SMTP_RELAY_HOST` and credentials and it forwards what it receives instead of holding it, and `MP_SMTP_RELAY_ALLOWED_RECIPIENTS` restricts forwarding to a pattern you name — your own domain, say — so a test run cannot mail a customer. Both are commented out in `compose.yaml`. Pointing `SMTP_HOST` straight at the provider works too; the relay is the version that keeps a copy of everything in the web inbox.
+
+Two flows sit on top of it. Registration sends a confirmation link, `POST /api/v1/auth/email/verify` spends it, and an account can ask for another. `POST /api/v1/auth/password/forgot` sends a reset link and `POST /api/v1/auth/password/reset` spends it, setting the new password and revoking every refresh token the account holds, because a reset is what somebody does when they think the account is not theirs any more.
+
+Both links are single-use tokens from `secrets.token_urlsafe`, stored as a sha256 digest in `single_use_tokens` with a purpose and an expiry. Asking again retires the link already sent. A token is refused if it is expired, already spent, or carries the other purpose, so a confirmation link cannot be used to change a password.
+
+`REQUIRE_VERIFIED_EMAIL` decides whether an unconfirmed address can sign in. It ships off, so a clone works before a mail server exists; turn it on once one does.
+
+The message is written in the language the account saved. `app/core/i18n/locale.py` resolves a locale from the stored preference first and the request's `Accept-Language` second, and the deadline in the message is formatted in the timezone the account saved. That ordering is deliberate: mail is sent when there is no request to read a header from, so the database is the only source that is always there. Synchronous responses go the other way and carry a code the frontend translates, so the API never has to speak the reader's language.
+
+## Attachments
+
+`POST /api/v1/items/{id}/attachments` takes a multipart upload and stores it through a `Storage` protocol. The implementation that ships writes to a directory on this machine, `STORAGE_ROOT`, so a clone needs no object store; swapping in S3 is a class in `app/core/storage/` and one line in `app/api/deps.py`.
+
+The stored name is a generated key, never the submitted filename, so a name carrying `../` reaches nothing. The filename is kept for the download header after being reduced to a plain basename. `ATTACHMENT_CONTENT_TYPES` is an allowlist and `MAX_ATTACHMENT_BYTES` a ceiling counted as the file streams, so a file over the limit is refused mid-upload and the partial one is swept.
+
+## Background jobs
+
+The retention scripts became jobs. `app/jobs/` holds the work, `app/core/jobs/scheduler.py` runs each one on its own interval inside the API process, and `JOBS_ENABLED` turns the whole thing off. There is no broker, because a template that needs Redis to start is a template that does not start.
+
+Every job takes a PostgreSQL advisory lock named after itself, so a second replica skips the run rather than doing it twice. A job that raises is logged and tried again on the next tick instead of killing the loop.
+
+Four ship: pruning the audit log, pruning the request log, pruning spent idempotency keys, and deleting expired tokens. When the work outgrows an in-process loop, `Job.run` is the seam — point it at arq or taskiq and nothing else moves.
+
+## The admin CLI
+
+```bash
+uv run fastapi-template create-superuser
+uv run fastapi-template grant-role reader@example.com superadmin
+uv run fastapi-template verify-email reader@example.com
+uv run fastapi-template seed
+uv run fastapi-template prune
+```
+
+`app/cli/actions.py` holds the work and `app/cli/main.py` is the typer wiring, which is why the actions are covered by tests that never touch the terminal. typer arrives with `fastapi[standard]`, so this costs no dependency.
+
+## Starting your own project
+
+```bash
+python3 scripts/bootstrap.py my-project
+```
+
+It renames the template in `pyproject.toml`, `compose.yaml`, `alembic.ini` and `.env.example`, writes a `.env` with a generated `SECRET_KEY`, and empties the changelog, which belongs to the template rather than to your app. An existing `.env` is left alone.
+
+What it deliberately does not do is delete the `Item` slice. That slice is the worked example the rest of the documentation points at, and removing it means touching a model, a repository, a service, a router, a migration and a feature flag. Copy it, then delete it when your own resource works.
+
 ## Quickstart with Docker
 
 Requires Docker with Compose. Generate a secret first, because the app refuses to start without one:
@@ -180,7 +260,7 @@ sed -i "s/^SECRET_KEY=.*/SECRET_KEY=$(openssl rand -hex 32)/" .env
 docker compose up --build
 ```
 
-Compose starts PostgreSQL, waits for it to pass its healthcheck, applies migrations, and serves the API on http://127.0.0.1:8000. The test database is created alongside the main one by `scripts/create-test-database.sh`. Override `POSTGRES_PORT` or `API_PORT` if those ports are already taken on your machine. The database port is published on loopback only, because the default password is in this file.
+Compose starts PostgreSQL and Mailpit, waits for both to pass their healthchecks, applies migrations, and serves the API on http://127.0.0.1:8000. Mail the API sends is readable at http://127.0.0.1:8025. The test database is created alongside the main one by `scripts/create-test-database.sh`. Override `POSTGRES_PORT` or `API_PORT` if those ports are already taken on your machine. The database port is published on loopback only, because the default password is in this file.
 
 A `psql` against that database is one command away, and it needs nothing installed on the host:
 
