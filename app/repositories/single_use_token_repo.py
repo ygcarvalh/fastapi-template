@@ -1,26 +1,19 @@
 from datetime import datetime
-from typing import Any, cast
 
-from sqlalchemy import CursorResult, delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, select, update
 
 from app.models.single_use_token import SingleUseToken
+from app.repositories.base import BaseRepository
 
 
-class SingleUseTokenRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
+class SingleUseTokenRepository(BaseRepository):
     async def create(self, token: SingleUseToken) -> SingleUseToken:
-        self._session.add(token)
-        await self._session.flush()
-        await self._session.refresh(token)
-        return token
+        return await self._insert_refreshed(token)
 
     async def get_active(
         self, token_hash: str, purpose: str, now: datetime
     ) -> SingleUseToken | None:
-        result = await self._session.execute(
+        return await self._one_or_none(
             select(SingleUseToken).where(
                 SingleUseToken.token_hash == token_hash,
                 SingleUseToken.purpose == purpose,
@@ -28,10 +21,9 @@ class SingleUseTokenRepository:
                 SingleUseToken.expires_at > now,
             )
         )
-        return result.scalar_one_or_none()
 
     async def latest_for(self, user_id: int, purpose: str) -> SingleUseToken | None:
-        result = await self._session.execute(
+        return await self._first(
             select(SingleUseToken)
             .where(
                 SingleUseToken.user_id == user_id,
@@ -40,32 +32,23 @@ class SingleUseTokenRepository:
             .order_by(SingleUseToken.created_at.desc(), SingleUseToken.id.desc())
             .limit(1)
         )
-        return result.scalars().first()
 
     async def mark_used(self, token: SingleUseToken, now: datetime) -> None:
         token.used_at = now
-        await self._session.flush()
+        await self._flush()
 
     async def revoke_all_for(self, user_id: int, purpose: str, now: datetime) -> int:
-        result = cast(
-            CursorResult[Any],
-            await self._session.execute(
-                update(SingleUseToken)
-                .where(
-                    SingleUseToken.user_id == user_id,
-                    SingleUseToken.purpose == purpose,
-                    SingleUseToken.used_at.is_(None),
-                )
-                .values(used_at=now)
-            ),
+        return await self._affected(
+            update(SingleUseToken)
+            .where(
+                SingleUseToken.user_id == user_id,
+                SingleUseToken.purpose == purpose,
+                SingleUseToken.used_at.is_(None),
+            )
+            .values(used_at=now)
         )
-        return result.rowcount
 
     async def delete_expired(self, now: datetime) -> int:
-        result = cast(
-            CursorResult[Any],
-            await self._session.execute(
-                delete(SingleUseToken).where(SingleUseToken.expires_at < now)
-            ),
+        return await self._affected(
+            delete(SingleUseToken).where(SingleUseToken.expires_at < now)
         )
-        return result.rowcount

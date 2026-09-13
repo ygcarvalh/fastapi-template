@@ -1,11 +1,10 @@
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, cast
 
-from sqlalchemy import ColumnElement, CursorResult, delete, select, tuple_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import ColumnElement, select, tuple_
 
 from app.models.request_log import RequestLog
+from app.repositories.base import DELETE_BATCH_SIZE, BaseRepository
 from app.schemas.pagination import decode_cursor
 from app.schemas.request_log import (
     CLIENT_ERROR_STATUS,
@@ -14,8 +13,6 @@ from app.schemas.request_log import (
 )
 
 MAX_STATUS = 599
-
-DELETE_BATCH_SIZE = 5000
 
 OUTCOME_RANGES: dict[str, tuple[int, int]] = {
     "success": (0, CLIENT_ERROR_STATUS - 1),
@@ -51,19 +48,14 @@ def _where(query: RequestLogQuery) -> list[ColumnElement[bool]]:
     return conditions
 
 
-class RequestLogRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
+class RequestLogRepository(BaseRepository):
     async def create(self, entry: RequestLog) -> RequestLog:
-        self._session.add(entry)
-        await self._session.flush()
-        return entry
+        return await self._insert(entry)
 
     # One row more than asked for, which is how the caller learns there is a
     # next page without anybody counting the whole table.
     async def list_page(self, query: RequestLogQuery) -> Sequence[RequestLog]:
-        result = await self._session.execute(
+        return await self._all(
             select(RequestLog)
             .where(*_where(query))
             # created_at alone is not a total order, and pagination with ties
@@ -71,24 +63,10 @@ class RequestLogRepository:
             .order_by(RequestLog.created_at.desc(), RequestLog.id.desc())
             .limit(query.limit + 1)
         )
-        return result.scalars().all()
 
-    # One statement per batch, so a retention run does not lock the table for
-    # the length of a single enormous DELETE. The caller commits between calls.
     async def delete_batch_created_before(
         self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int:
-        doomed = (
-            select(RequestLog.id)
-            .where(RequestLog.created_at < cutoff)
-            .order_by(RequestLog.id)
-            .limit(batch_size)
-            .scalar_subquery()
+        return await self._delete_batch_before(
+            RequestLog.id, RequestLog.created_at, cutoff, batch_size
         )
-        result = cast(
-            CursorResult[Any],
-            await self._session.execute(
-                delete(RequestLog).where(RequestLog.id.in_(doomed))
-            ),
-        )
-        return result.rowcount

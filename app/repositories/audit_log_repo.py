@@ -1,15 +1,12 @@
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, cast
 
-from sqlalchemy import ColumnElement, CursorResult, delete, select, tuple_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import ColumnElement, select, tuple_
 
 from app.models.audit_log import AuditLog
+from app.repositories.base import DELETE_BATCH_SIZE, BaseRepository
 from app.schemas.audit_log import AuditLogQuery
 from app.schemas.pagination import decode_cursor
-
-DELETE_BATCH_SIZE = 5000
 
 
 def _where(query: AuditLogQuery) -> list[ColumnElement[bool]]:
@@ -38,23 +35,17 @@ def _where(query: AuditLogQuery) -> list[ColumnElement[bool]]:
     return conditions
 
 
-class AuditLogRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
+class AuditLogRepository(BaseRepository):
     async def create(self, entry: AuditLog) -> AuditLog:
-        self._session.add(entry)
-        await self._session.flush()
-        return entry
+        return await self._insert(entry)
 
     async def list_page(self, query: AuditLogQuery) -> Sequence[AuditLog]:
-        result = await self._session.execute(
+        return await self._all(
             select(AuditLog)
             .where(*_where(query))
             .order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc())
             .limit(query.limit + 1)
         )
-        return result.scalars().all()
 
     async def get(self, entry_id: int) -> AuditLog | None:
         return await self._session.get(AuditLog, entry_id)
@@ -62,17 +53,6 @@ class AuditLogRepository:
     async def delete_batch_occurred_before(
         self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int:
-        doomed = (
-            select(AuditLog.id)
-            .where(AuditLog.occurred_at < cutoff)
-            .order_by(AuditLog.id)
-            .limit(batch_size)
-            .scalar_subquery()
+        return await self._delete_batch_before(
+            AuditLog.id, AuditLog.occurred_at, cutoff, batch_size
         )
-        result = cast(
-            CursorResult[Any],
-            await self._session.execute(
-                delete(AuditLog).where(AuditLog.id.in_(doomed))
-            ),
-        )
-        return result.rowcount
