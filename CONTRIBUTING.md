@@ -56,7 +56,7 @@ app/
   api/deps.py        # composition root; wires concrete repositories in
   services/          # business rules, HTTP-agnostic, raise domain exceptions
   services/protocols.py  # the repository interfaces the services depend on
-  repositories/      # the only layer that queries the database
+  repositories/      # the only layer that queries the database, all on BaseRepository
   models/            # SQLAlchemy entities
   schemas/           # Pydantic request and response contracts
   core/              # config, security, error codes, domain exceptions, feature flags

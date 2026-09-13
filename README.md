@@ -421,7 +421,7 @@ Copy the `Item` slice, renaming across the layers:
 1. `app/models/<name>.py` — ORM model (register it in `app/models/__init__.py`).
 2. `app/schemas/<name>.py` — Pydantic schemas.
 3. `app/services/protocols.py` — the repository interface the service needs.
-4. `app/repositories/<name>_repo.py` — queries implementing that interface.
+4. `app/repositories/<name>_repo.py` — queries implementing that interface, on top of `BaseRepository`, which holds the session and the flush, refresh, rowcount and batch-delete plumbing.
 5. `app/services/<name>_service.py` — business rules, depending on the protocol.
 6. `app/api/v1/routes/<name>.py` — routes; include it in `app/api/v1/router.py`.
 7. Add a dependency provider in `app/api/deps.py`.
