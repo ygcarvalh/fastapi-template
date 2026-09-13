@@ -1,3 +1,4 @@
+from app.models.attachment import Attachment
 from app.models.audit_log import AuditLog
 from app.models.idempotency_key import IdempotencyKey
 from app.models.item import Item
@@ -9,6 +10,7 @@ from app.models.user import User
 from app.models.user_preferences import UserPreferences
 
 __all__ = [
+    "Attachment",
     "AuditLog",
     "IdempotencyKey",
     "Item",

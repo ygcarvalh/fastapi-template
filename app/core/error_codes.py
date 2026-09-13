@@ -28,6 +28,9 @@ class ErrorCode(StrEnum):
     AUTH_EMAIL_NOT_VERIFIED = "auth.emailNotVerified"
 
     ITEM_NOT_FOUND = "item.notFound"
+    ATTACHMENT_NOT_FOUND = "attachment.notFound"
+    ATTACHMENT_TYPE_REFUSED = "attachment.typeRefused"
+    ATTACHMENT_TOO_LARGE = "attachment.tooLarge"
 
     USER_NOT_FOUND = "user.notFound"
     USER_EMAIL_TAKEN = "user.emailTaken"

@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
+from app.models.attachment import Attachment
 from app.models.audit_log import AuditLog
 from app.models.idempotency_key import IdempotencyKey
 from app.models.item import Item
@@ -95,6 +96,18 @@ class IdempotencyRepositoryProtocol(Protocol):
     async def delete_batch_created_before(
         self, cutoff: datetime, batch_size: int
     ) -> int: ...
+
+
+class AttachmentRepositoryProtocol(Protocol):
+    async def create(self, attachment: Attachment) -> Attachment: ...
+
+    async def list_for_item(self, item_id: int) -> Sequence[Attachment]: ...
+
+    async def get_for_owner(
+        self, attachment_id: int, owner_id: int
+    ) -> Attachment | None: ...
+
+    async def delete(self, attachment: Attachment) -> None: ...
 
 
 class RequestLogRepositoryProtocol(Protocol):

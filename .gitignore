@@ -11,3 +11,6 @@ build/
 .coverage
 htmlcov/
 coverage.xml
+
+# Files uploaded to the local storage backend
+var/

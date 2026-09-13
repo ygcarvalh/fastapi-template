@@ -27,7 +27,8 @@ class IdempotencyRepository:
             await savepoint.commit()
         except IntegrityError:
             await savepoint.rollback()
-            self._session.expunge(entry)
+            if entry in self._session:
+                self._session.expunge(entry)
             return None
         return entry
 

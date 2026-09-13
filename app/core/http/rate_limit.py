@@ -5,13 +5,17 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
+from app.core.config import get_settings
 from app.core.error_codes import ErrorCode
 from app.core.http.errors import error_response
 
 RATE_LIMIT_DETAIL = "Too many requests"
 RATE_LIMIT_MESSAGE = "Too many requests. Try again shortly."
 
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=get_settings().rate_limit_storage_uri or None,
+)
 
 
 def register_rate_limiting(app: FastAPI) -> None:

@@ -19,9 +19,12 @@ from app.core.error_codes import ErrorCode
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.mail.sender import LoggingMailSender, MailSender, SmtpMailSender
 from app.core.security import decode_access_token, invalid_credentials
+from app.core.storage.backend import Storage
+from app.core.storage.local import LocalStorage
 from app.db.session import get_session
 from app.models.role import Scope
 from app.models.user import User
+from app.repositories.attachment_repo import AttachmentRepository
 from app.repositories.audit_log_repo import AuditLogRepository
 from app.repositories.item_repo import ItemRepository
 from app.repositories.preferences_repo import PreferencesRepository
@@ -31,6 +34,7 @@ from app.repositories.role_repo import PermissionRepository, RoleRepository
 from app.repositories.single_use_token_repo import SingleUseTokenRepository
 from app.repositories.user_repo import UserRepository
 from app.services.account_mailer import AccountMailer
+from app.services.attachment_service import AttachmentService
 from app.services.audit_log_service import AuditLogService
 from app.services.auth_service import AuthService
 from app.services.email_verification_service import EmailVerificationService
@@ -128,6 +132,25 @@ def get_role_service(session: SessionDep) -> RoleService:
 
 
 RoleServiceDep = Annotated[RoleService, Depends(get_role_service)]
+
+
+@lru_cache(maxsize=1)
+def get_storage() -> Storage:
+    return LocalStorage(get_settings().storage_root)
+
+
+def get_attachment_service(session: SessionDep) -> AttachmentService:
+    settings = get_settings()
+    return AttachmentService(
+        AttachmentRepository(session),
+        ItemRepository(session),
+        get_storage(),
+        max_bytes=settings.max_attachment_bytes,
+        allowed_types=settings.attachment_type_set,
+    )
+
+
+AttachmentServiceDep = Annotated[AttachmentService, Depends(get_attachment_service)]
 
 
 def get_item_service(session: SessionDep) -> ItemService:

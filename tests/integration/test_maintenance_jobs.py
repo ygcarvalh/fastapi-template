@@ -27,7 +27,7 @@ OWNER_EMAIL = "jobs@example.com"
 @pytest_asyncio.fixture
 async def factory(
     engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
-) -> AsyncGenerator[async_sessionmaker[object]]:
+) -> AsyncGenerator[async_sessionmaker[AsyncSession]]:
     made = async_sessionmaker(engine, expire_on_commit=False)
     for module in ("app.jobs.maintenance",):
         monkeypatch.setattr(f"{module}.get_session_factory", lambda: made)
@@ -56,7 +56,7 @@ async def _forget(session: AsyncSession, user_id: int) -> None:
 
 
 @pytest_asyncio.fixture
-async def owner(factory: async_sessionmaker[object]) -> AsyncGenerator[int]:
+async def owner(factory: async_sessionmaker[AsyncSession]) -> AsyncGenerator[int]:
     async with factory() as session:
         for stale in (
             (await session.execute(select(User).where(User.email == OWNER_EMAIL)))
@@ -75,7 +75,7 @@ async def owner(factory: async_sessionmaker[object]) -> AsyncGenerator[int]:
         await _forget(session, user_id)
 
 
-async def _count(factory: async_sessionmaker[object], model: object) -> int:
+async def _count(factory: async_sessionmaker[AsyncSession], model: type) -> int:
     async with factory() as session:
         return int(
             (
@@ -85,7 +85,7 @@ async def _count(factory: async_sessionmaker[object], model: object) -> int:
 
 
 async def test_pruning_drops_only_the_rows_that_aged_out(
-    factory: async_sessionmaker[object],
+    factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async with factory() as session:
         old = RequestLog(
@@ -115,7 +115,7 @@ async def test_pruning_drops_only_the_rows_that_aged_out(
 
 
 async def test_expired_tokens_are_swept(
-    factory: async_sessionmaker[object], owner: int
+    factory: async_sessionmaker[AsyncSession], owner: int
 ) -> None:
     async with factory() as session:
         session.add(
@@ -150,7 +150,7 @@ async def test_expired_tokens_are_swept(
 
 
 async def test_a_second_replica_skips_work_the_first_is_doing(
-    factory: async_sessionmaker[object], engine: AsyncEngine
+    factory: async_sessionmaker[AsyncSession], engine: AsyncEngine
 ) -> None:
     ran: list[str] = []
 
@@ -168,7 +168,7 @@ async def test_a_second_replica_skips_work_the_first_is_doing(
 
 
 async def test_the_lock_is_handed_back_when_the_job_ends(
-    factory: async_sessionmaker[object],
+    factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def work() -> int:
         return 1

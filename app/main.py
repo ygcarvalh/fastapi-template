@@ -25,6 +25,11 @@ from app.core.observability.request_logging import (
     parse_excluded_paths,
     register_request_logging,
 )
+from app.core.observability.tracing import (
+    configure_tracing,
+    instrument_app,
+    instrument_engine,
+)
 from app.db.session import dispose_engine, get_engine
 from app.jobs.registry import maintenance_jobs
 from app.schemas.error import COMMON_ERROR_RESPONSES
@@ -79,6 +84,13 @@ def create_app() -> FastAPI:
     register_cors(app, origins=settings.cors_origin_list)
     if settings.metrics_enabled:
         register_metrics(app)
+    if settings.tracing_enabled:
+        configure_tracing(
+            service_name=settings.service_name,
+            otlp_endpoint=settings.otlp_endpoint or None,
+        )
+        instrument_app(app, excluded_urls=settings.request_log_excluded_paths)
+        instrument_engine(get_engine().sync_engine)
     if settings.jobs_enabled:
         app.state.scheduler = Scheduler(
             maintenance_jobs(settings),

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     max_request_body_bytes: Annotated[int, Field(gt=0)] = 1024 * 1024
     hsts_enabled: bool = False
+    rate_limit_storage_uri: str = ""
     login_rate_limit: str = "10/minute"
     register_rate_limit: str = "5/minute"
     mail_rate_limit: str = "5/hour"
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
     log_format: Literal["json", "console"] = "json"
     log_file: str | None = None
     metrics_enabled: bool = True
+    tracing_enabled: bool = True
+    otlp_endpoint: str = ""
     request_log_excluded_paths: str = "/health,/health/ready,/metrics"
     request_log_persist_enabled: bool = True
     feature_flags: str = "items,request-log,audit-log"
@@ -43,6 +46,11 @@ class Settings(BaseSettings):
     idempotency_retention_hours: Annotated[int, Field(gt=0)] = 24
 
     app_base_url: str = "http://localhost:4200"
+    storage_root: str = "var/uploads"
+    max_attachment_bytes: Annotated[int, Field(gt=0)] = 5 * 1024 * 1024
+    attachment_content_types: str = (
+        "image/png,image/jpeg,image/webp,application/pdf,text/plain"
+    )
     mail_backend: Literal["log", "smtp"] = "log"
     mail_from: str = "no-reply@example.com"
     smtp_host: str = "localhost"
@@ -53,6 +61,14 @@ class Settings(BaseSettings):
     email_verification_expire_hours: Annotated[int, Field(gt=0)] = 48
     password_reset_expire_minutes: Annotated[int, Field(gt=0)] = 60
     require_verified_email: bool = False
+
+    @property
+    def attachment_type_set(self) -> frozenset[str]:
+        return frozenset(
+            entry.strip()
+            for entry in self.attachment_content_types.split(",")
+            if entry.strip()
+        )
 
     @property
     def cors_origin_list(self) -> list[str]:

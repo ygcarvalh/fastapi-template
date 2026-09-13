@@ -12,7 +12,6 @@ from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app import models as _models  # noqa: F401
-from app.core.config import get_settings
 from app.db.base import Base
 
 DRIFT_DATABASE = "fastapi_db_drift"
@@ -25,13 +24,6 @@ def _with_database(url: str, database: str) -> str:
     return urlunsplit(parts._replace(path=f"/{database}"))
 
 
-def _require_test_database_url() -> str:
-    url = get_settings().test_database_url
-    if url is None:
-        raise RuntimeError("TEST_DATABASE_URL is required to run the migration check")
-    return url
-
-
 def _upgrade_to_head(database_url: str) -> None:
     subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
@@ -42,8 +34,8 @@ def _upgrade_to_head(database_url: str) -> None:
 
 
 @pytest_asyncio.fixture
-async def migrated_database_url() -> AsyncGenerator[str]:
-    base_url = _require_test_database_url()
+async def migrated_database_url(database_url: str) -> AsyncGenerator[str]:
+    base_url = database_url
     drift_url = _with_database(base_url, DRIFT_DATABASE)
     admin = create_async_engine(
         _with_database(base_url, "postgres"), isolation_level="AUTOCOMMIT"
