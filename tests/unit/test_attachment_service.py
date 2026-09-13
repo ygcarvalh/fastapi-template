@@ -177,3 +177,16 @@ def test_a_filename_is_reduced_to_a_plain_name(sent: str | None, expected: str) 
 
 def test_a_very_long_filename_is_cut_to_what_the_column_holds() -> None:
     assert len(safe_filename("a" * 400)) == 255
+
+
+@pytest.mark.parametrize(
+    ("sent", "refused"),
+    [
+        ('quote".pdf', '"'),
+        ("back\\slash.pdf", "\\"),
+        ("semi;colon.pdf", ";"),
+        ("line\r\nbreak.pdf", "\n"),
+    ],
+)
+def test_a_filename_drops_what_would_break_a_header(sent: str, refused: str) -> None:
+    assert refused not in safe_filename(sent)

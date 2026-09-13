@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, File, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -26,7 +27,10 @@ async def _chunks(upload: UploadFile) -> AsyncIterator[bytes]:
 
 
 def _disposition(attachment: Attachment) -> str:
-    return f'attachment; filename="{attachment.filename}"'
+    ascii_name = attachment.filename.encode("ascii", "replace").decode()
+    quoted = ascii_name.replace("\\", "_").replace('"', "_")
+    encoded = quote(attachment.filename, safe="")
+    return f"attachment; filename=\"{quoted}\"; filename*=UTF-8''{encoded}"
 
 
 @private_router.post(

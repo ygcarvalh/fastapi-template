@@ -18,6 +18,7 @@ from app.services.protocols import (
 
 FALLBACK_FILENAME = "file"
 MAX_FILENAME_LENGTH = 255
+REFUSED_IN_FILENAME = frozenset({'"', "\\", ";", "\r", "\n"})
 TOO_LARGE = "This file is larger than the deployment accepts"
 TYPE_REFUSED = "This deployment does not accept that file type"
 
@@ -31,7 +32,9 @@ class Upload(NamedTuple):
 def safe_filename(name: str | None) -> str:
     candidate = PurePosixPath((name or "").replace("\\", "/")).name
     cleaned = "".join(
-        character for character in candidate if character.isprintable()
+        character
+        for character in candidate
+        if character.isprintable() and character not in REFUSED_IN_FILENAME
     ).strip()
     return (cleaned or FALLBACK_FILENAME)[:MAX_FILENAME_LENGTH]
 

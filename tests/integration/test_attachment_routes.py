@@ -45,7 +45,9 @@ async def test_a_file_comes_back_byte_for_byte(auth_client: AsyncClient) -> None
     )
 
     assert response.content == b"hello world"
-    assert response.headers["content-disposition"] == 'attachment; filename="notes.txt"'
+    assert response.headers["content-disposition"] == (
+        "attachment; filename=\"notes.txt\"; filename*=UTF-8''notes.txt"
+    )
 
 
 async def test_a_type_this_deployment_refuses_is_answered_with_403(
@@ -91,3 +93,40 @@ async def test_attachments_need_a_token(client: AsyncClient) -> None:
     response = await client.get("/api/v1/items/1/attachments")
 
     assert response.status_code == 401
+
+
+async def test_a_filename_never_breaks_the_download_header(
+    auth_client: AsyncClient,
+) -> None:
+    item_id = await _item(auth_client)
+    uploaded = await auth_client.post(
+        f"/api/v1/items/{item_id}/attachments",
+        files={"file": ('quote";drop.txt', b"data", "text/plain")},
+    )
+
+    response = await auth_client.get(
+        f"/api/v1/attachments/{uploaded.json()['id']}/content"
+    )
+
+    disposition = response.headers["content-disposition"]
+    assert disposition.count('"') == 2
+    assert disposition.startswith('attachment; filename="')
+    assert '";drop' not in disposition
+
+
+async def test_a_filename_in_another_script_survives_the_header(
+    auth_client: AsyncClient,
+) -> None:
+    item_id = await _item(auth_client)
+    uploaded = await auth_client.post(
+        f"/api/v1/items/{item_id}/attachments",
+        files={"file": ("relatório.txt", b"data", "text/plain")},
+    )
+
+    response = await auth_client.get(
+        f"/api/v1/attachments/{uploaded.json()['id']}/content"
+    )
+
+    assert (
+        "filename*=UTF-8''relat%C3%B3rio.txt" in response.headers["content-disposition"]
+    )
