@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PLACEHOLDER_SECRET_KEY = "change-me-in-production-to-a-random-32-byte-string"
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     docs_enabled: bool = True
     cors_origins: str = ""
-    max_request_body_bytes: Annotated[int, Field(gt=0)] = 1024 * 1024
+    max_request_body_bytes: Annotated[int, Field(gt=0)] = 8 * 1024 * 1024
     hsts_enabled: bool = False
     rate_limit_storage_uri: str = ""
     login_rate_limit: str = "10/minute"
@@ -85,6 +85,16 @@ class Settings(BaseSettings):
                 "call the API with a stolen token"
             )
         return value
+
+    @model_validator(mode="after")
+    def refuse_an_upload_ceiling_the_body_limit_would_cut(self) -> "Settings":
+        if self.max_attachment_bytes > self.max_request_body_bytes:
+            raise ValueError(
+                "MAX_ATTACHMENT_BYTES is above MAX_REQUEST_BODY_BYTES, so an upload "
+                "the attachment limit allows would be refused as a body that is too "
+                "large. Raise MAX_REQUEST_BODY_BYTES above it."
+            )
+        return self
 
     @field_validator("secret_key")
     @classmethod

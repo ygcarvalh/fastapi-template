@@ -17,6 +17,7 @@ async def bounded_client(
 ) -> AsyncGenerator[AsyncClient]:
     get_settings.cache_clear()
     monkeypatch.setenv("MAX_REQUEST_BODY_BYTES", str(LIMIT))
+    monkeypatch.setenv("MAX_ATTACHMENT_BYTES", str(LIMIT))
     app = create_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -80,5 +81,8 @@ async def test_requests_without_a_body_are_untouched(
     assert response.status_code == 200
 
 
-def test_the_default_limit_is_one_mebibyte() -> None:
-    assert get_settings().max_request_body_bytes == 1024 * 1024
+def test_the_default_limit_leaves_room_for_an_upload() -> None:
+    settings = get_settings()
+
+    assert settings.max_request_body_bytes == 8 * 1024 * 1024
+    assert settings.max_attachment_bytes < settings.max_request_body_bytes

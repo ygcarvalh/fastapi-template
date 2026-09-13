@@ -42,7 +42,7 @@ services:
       SMTP_PORT: ${SMTP_PORT:-1025}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
-      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-1048576}
+      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-8388608}
       # Which proxies uvicorn believes about X-Forwarded-For. Empty means
       # none, so a caller cannot pick its own IP for the rate limiter or the
       # request log. Set it to your reverse proxy's address in production.
