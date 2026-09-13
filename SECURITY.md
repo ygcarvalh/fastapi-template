@@ -6,7 +6,7 @@ Open a private security advisory through GitHub rather than a public issue. Only
 
 ## What the template already does
 
-`uv run pip-audit` reports no known vulnerabilities in the locked dependency set as of 2026-09-11. There is no CI workflow, so the pre-push hook runs it whenever `pyproject.toml` or `uv.lock` is part of the push; run it by hand before a release as well. Dependabot opens weekly pull requests for uv and Docker.
+`uv run pip-audit` reports no known vulnerabilities in the locked dependency set as of 2026-09-12, which is the set that added the OpenTelemetry SDK and its instrumentation. There is no CI workflow, so the pre-push hook runs it whenever `pyproject.toml` or `uv.lock` is part of the push; run it by hand before a release as well. Dependabot opens weekly pull requests for uv and Docker.
 
 The pre-deploy checklist below and the findings of the 2026-09-11 review live in `docs/security-audit-2026-09-11.md`, together with what the review left as standing debt.
 
@@ -14,7 +14,7 @@ Routes are private by default. `app/api/v1/router.py` includes a `public_router`
 
 Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`, with `Strict-Transport-Security` added when `HSTS_ENABLED` is on. All of them are defined once in `app/core/http/headers.py` and asserted in `tests/integration/test_security_headers.py`, so dropping one fails the suite. `no-store` is there because every body the API answers is either personal data or a token, and neither belongs in a shared cache.
 
-Request bodies are bounded by `MAX_REQUEST_BODY_BYTES`, 1 MiB by default. `app/core/http/body_limit.py` answers 413 to a declared `Content-Length` above the limit before the route runs, and cuts off a body that streams in without one at the byte where it passes the limit. The refusal carries the usual envelope and correlation ID. This closes the memory exhaustion an unauthenticated `POST /api/v1/users` with an enormous body would otherwise cause, since FastAPI reads the whole body before validation sees it.
+Request bodies are bounded by `MAX_REQUEST_BODY_BYTES`, 8 MiB by default and required to stay above `MAX_ATTACHMENT_BYTES`, which the app checks at startup. `app/core/http/body_limit.py` answers 413 to a declared `Content-Length` above the limit before the route runs, and cuts off a body that streams in without one at the byte where it passes the limit. The refusal carries the usual envelope and correlation ID. This closes the memory exhaustion an unauthenticated `POST /api/v1/users` with an enormous body would otherwise cause, since FastAPI reads the whole body before validation sees it.
 
 Email addresses are lowercased on registration, on profile update, and on login, in `app/schemas/user.py` and `AuthService.authenticate`. Without that, two accounts could differ only by case, and a reader who registered with a capital letter could not sign in without it. Migration `0a456e5b983c` lowercases what is already stored and fails, deliberately, where two active accounts collide.
 
@@ -52,6 +52,14 @@ The client address that the rate limiter and the request log record is the one u
 
 The container runs as an unprivileged user. The runtime stage in `Dockerfile` creates a system account with UID 1001 and switches to it before the entrypoint, and the build dependencies stay behind in the builder stage.
 
+Account recovery runs on single-use tokens. `single_use_tokens` stores a sha256 digest of a 32-byte value from `secrets.token_urlsafe`, never the value itself, and the lookup filters on the purpose, the expiry and whether the token was already spent. A confirmation link cannot be used to reset a password, asking for a second link retires the first, and completing a reset revokes every refresh token the account holds.
+
+`POST /auth/password/forgot` answers 202 with an empty body whether or not the address has an account, and answers before deciding which of the two it is: the lookup, the token and the message all run in a background task, so the two branches are indistinguishable by response time.
+
+Retried writes are answered rather than repeated. A client that sends `Idempotency-Key` gets the stored response back on a retry, and the key is scoped to the account that sent it: `IdempotencyMiddleware` verifies the bearer token's signature before taking the caller's id, so one account is never answered with another's stored response, and a request with no valid token ignores the header.
+
+Uploads are bounded and typed. `ATTACHMENT_CONTENT_TYPES` is an allowlist that ships without `image/svg+xml`, `MAX_ATTACHMENT_BYTES` is counted as the file streams and the partial file is swept when it is passed, the stored name is a generated key rather than anything the client sent, and downloads answer with `Content-Disposition: attachment` so a file is saved rather than rendered in the origin.
+
 ## What you must change before deploying
 
 Generate a real `SECRET_KEY` for each environment with `openssl rand -hex 32`, and do not reuse one across environments. Every access and refresh token is signed with it, so sharing it between staging and production means a staging token authenticates in production.
@@ -63,9 +71,12 @@ Then work through the following:
 - Append `?ssl=require` to `DATABASE_URL`, which asyncpg reads when it connects.
 - Set `FORWARDED_ALLOW_IPS` to the reverse proxy's address. Until you do, every caller shares the proxy's address in the rate limiter and the request log, which means one abusive client throttles everyone.
 - Set `CORS_ORIGINS` only if the frontend is served from another origin, and name each origin. The sibling frontends put the SPA and `/api` on one origin behind a proxy instead, which needs nothing here.
-- Put Redis behind `app/core/http/rate_limit.py` before running more than one worker. The default slowapi limiter counts in process memory, so counts reset on restart and the effective limit multiplies by the worker count. Login, refresh, logout and password change share `LOGIN_RATE_LIMIT`, registration has `REGISTER_RATE_LIMIT`; the rest of the API is unthrottled.
+- Set `RATE_LIMIT_STORAGE_URI` to a Redis URL before running more than one worker. Empty means slowapi counts in process memory, so counts reset on restart and the effective limit multiplies by the worker count. Login, refresh, logout and password change share `LOGIN_RATE_LIMIT`, registration has `REGISTER_RATE_LIMIT`, and everything that sends mail shares `MAIL_RATE_LIMIT`; the rest of the API is unthrottled.
 - Decide whether a refresh should rotate the token. It does not, so a stolen refresh token stays useful until it expires or is revoked by a logout, a password change, or deactivation. Rotation was left out because the frontends refresh from two places and a rotation race would sign readers out at random; if your client refreshes from one place, rotating is a small change to `AuthService.refresh`.
 - Decide whether `/metrics` and `/health/ready` may stay public. Neither needs a token: the first lists every route with its latency, the second says whether the database answers. Both are meant for a scraper and a load balancer on the internal network, so keep them off the public listener at the proxy.
-- Registration answers 409 when an address is already taken, which makes it the one place the template leaks account existence. That is a deliberate trade for a usable signup form. Closing it means answering 202 either way and sending a verification email, which needs a mail provider and a tokens table.
+- Registration answers 409 when an address is already taken, which makes it the one place the template leaks account existence. That is a deliberate trade for a usable signup form. The mailer and the tokens table that would close it are here now, so what is left is the decision to answer 202 either way and let the message say which of the two things happened.
+- Set `MAIL_BACKEND=smtp` and point it at a real server. The `log` backend writes the whole message, reset link included, to the structured log, which is right for development and wrong anywhere a log is readable by someone who should not be resetting passwords.
+- Set `APP_BASE_URL` to the address the frontend answers on. Every link in outgoing mail is built from it rather than from the request, which is what makes a forged `Host` header harmless here.
+- Decide how long `idempotency_keys` keeps stored responses. They are a second copy of whatever the caller already received, so `IDEMPOTENCY_RETENTION_HOURS` belongs in a retention policy as much as `AUDIT_LOG_RETENTION_DAYS` does.
 - Decide whether the request log table is worth its cost here. It writes one row per request, and only the auth routes are rate limited, so an unauthenticated flood on any other path fills it at the attacker's pace. Widen `REQUEST_LOG_EXCLUDED_PATHS`, sample, or set `REQUEST_LOG_PERSIST_ENABLED=false`. Whatever you keep, schedule the pruner and size the connection pool for one extra checkout per request.
 - Promote administrators deliberately. New accounts are created as `user`, and `require_role(UserRole.ADMIN)` is the only thing standing between a caller and an admin route.

@@ -81,7 +81,7 @@ Passwords run from 8 to 72 bytes. bcrypt refuses anything longer, so without the
 
 Addresses are stored in lowercase. `UserCreate` and `UserUpdate` normalize the email before it reaches a service, and login normalizes the submitted username the same way, so `Ada@Example.com` and `ada@example.com` are one account rather than two, and a reader who signs up with the shift key held down can still sign in without it. The migration `0a456e5b983c` lowercases what is already stored; it fails on the partial unique index if two active accounts differ only by case, which is the right outcome, because someone has to decide which one survives.
 
-Request bodies are bounded. `MAX_REQUEST_BODY_BYTES`, 1 MiB by default, is enforced in `app/core/http/body_limit.py`: a declared `Content-Length` above it answers 413 before the route runs, and a body that streams in without one is cut off where it passes the limit. Without that, a single anonymous `POST /api/v1/users` carrying a gigabyte would be read into memory before validation had anything to say about it.
+Request bodies are bounded. `MAX_REQUEST_BODY_BYTES`, 8 MiB by default and checked at startup to sit above `MAX_ATTACHMENT_BYTES`, is enforced in `app/core/http/body_limit.py`: a declared `Content-Length` above it answers 413 before the route runs, and a body that streams in without one is cut off where it passes the limit. Without that, a single anonymous `POST /api/v1/users` carrying a gigabyte would be read into memory before validation had anything to say about it.
 
 Every response carries `Cache-Control: no-store`. The API answers JSON that is either personal or a token, and no intermediary should keep a copy of either.
 
@@ -344,13 +344,15 @@ It costs one INSERT and three index updates per request: `request_id` for the lo
 uv run python scripts/prune-request-log.py 30    # keep 30 days
 ```
 
-It deletes in batches of 5000 and commits between them, so a retention run does not hold one lock for the length of a single enormous statement, and it sweeps expired refresh tokens on the way out.
+It deletes in batches of 5000 and commits between them, so a retention run does not hold one lock for the length of a single enormous statement, and it sweeps expired tokens on the way out. The same work runs on its own inside the API while `JOBS_ENABLED` is on, so the script is what you reach for when you want it to happen now.
 
 Past a few million rows, partition by month and drop whole partitions instead.
 
 This is the one collection that does not return a `total`. `GET /api/v1/requests` answers with a `CursorPage` — `items`, `limit`, `next_cursor` — because counting every matching row is what makes a table that grows by one row per request expensive to read, and an `offset` deep into it costs the same walk. The cursor is the ordering key `(created_at, id)`, base64 of the pair, so a row cannot shift under a reader because newer rows arrived above it. The endpoint reads one row past the limit to decide whether to hand back a cursor at all. Every other collection keeps `Page[T]` and its `total`: they are bounded, and a count over a few thousand rows is free. And bear in mind that only the auth routes are throttled, so a flood anywhere else writes rows at the attacker's pace: widen `REQUEST_LOG_EXCLUDED_PATHS`, or sample, before exposing this to the open internet.
 
 Prometheus metrics are served at `/metrics`, from `prometheus-fastapi-instrumentator`. Set `METRICS_ENABLED=false` to withdraw the route. The counters live in the process, so behind more than one worker each reports only its own share, the same caveat the in-memory rate limiter carries.
+
+Traces sit next to them. `TRACING_ENABLED` instruments FastAPI and SQLAlchemy and puts `trace_id` and `span_id` on every log line, so a correlation ID and a trace identify the same request from two directions. Nothing leaves the process until `OTLP_ENDPOINT` names a collector, which is why it ships on: the spans cost little and the `trace_id` in the log is worth having before anyone stands up Tempo or Jaeger. Point it at `http://collector:4318/v1/traces` when somebody does. Note that SQLAlchemy's instrumentation records statement text on the span, so table and column names travel to whatever collector you name.
 
 `GET /api/v1/features` lists what is on, and it needs a token: a flag name can describe work nobody has announced.
 
@@ -425,6 +427,8 @@ Copy the `Item` slice, renaming across the layers:
 7. Add a dependency provider in `app/api/deps.py`.
 8. Write unit + integration tests first, with fakes in `tests/unit/fakes.py`.
 
+Three decisions come with the copy. Name a code in `app/core/error_codes.py` for every way the resource can refuse, so a frontend can translate it. Add `VersionMixin` to the model if two people can edit one row, because adding it later is a migration plus a rewrite of every write path. And decide whether the rows are audited: a table left out of `EXCLUDED_TABLES` in `app/core/audit/policy.py` is recorded column by column, which is right for domain data and wrong for anything holding a digest or a copy of a response.
+
 ## Migrations
 
 ```bash
@@ -467,28 +471,36 @@ There is no CI workflow, so the hooks are the gate: `uv run pre-commit install -
 ```
 app/
   main.py                 # app factory; lifespan, routers, exception handlers
-  core/                   # config, security, domain exceptions, feature flags
-    http/                 # error envelope, security headers, CORS, body limit, rate limit
-    observability/        # logging, correlation ids, access log, metrics
-  db/                     # declarative base, engine and session lifecycle
+  cli/                    # administrative commands; actions apart from the typer wiring
+  core/                   # config, security, error codes, domain exceptions, feature flags
+    http/                 # error envelope, security headers, CORS, body limit, rate limit,
+                          # idempotency, If-Match
+    i18n/                 # locale and timezone resolution for anything rendered server side
+    jobs/                 # the scheduler, with no knowledge of the database
+    mail/                 # the sender protocol, its two backends, the message templates
+    observability/        # logging, correlation ids, access log, metrics, tracing
+    storage/              # the storage protocol and the local-filesystem backend
+  db/                     # declarative base, column mixins, engine and session lifecycle
+  jobs/                   # the maintenance work, and the advisory lock that bounds it
   api/
     deps.py               # shared dependencies (session, current user, services)
+    idempotency_store.py  # the database behind the idempotency middleware
     request_recorder.py   # writes the access log row on its own session
     v1/
       router.py           # aggregates v1 routers, public ones first
-      routes/             # auth, users, items, requests, features
+      routes/             # auth, users, items, attachments, requests, roles, audit, features
   models/                 # SQLAlchemy models
   schemas/                # Pydantic schemas, including pagination and the error envelope
   repositories/           # database access
   services/               # business logic
     protocols.py          # repository interfaces the services depend on
 alembic/                  # migration environment + versions
-scripts/                  # database bootstrap, commit lint, request-log pruning
+scripts/                  # bootstrap, database bootstrap, commit lint, retention entry points
 tests/
   unit/                   # logic against typed fakes
   integration/            # routes through the test database
 Dockerfile                # multi-stage build, non-root runtime
-compose.yaml              # PostgreSQL + API, migrations on start
+compose.yaml              # PostgreSQL, Mailpit and the API, migrations on start
 CONTRIBUTING.md           # setup, conventions, release sequence
 SECURITY.md               # reporting, posture, pre-deploy checklist
 ```
