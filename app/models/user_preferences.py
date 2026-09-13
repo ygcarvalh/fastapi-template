@@ -6,10 +6,12 @@ from app.db.mixins import TimestampMixin
 
 LOCALE_LENGTH = 10
 THEME_LENGTH = 10
+TIMEZONE_LENGTH = 64
 FEATURES_LENGTH = 200
 
 DEFAULT_LOCALE = "en-US"
 DEFAULT_THEME = "system"
+DEFAULT_TIMEZONE = "UTC"
 
 
 class UserPreferences(Base, TimestampMixin):
@@ -24,6 +26,11 @@ class UserPreferences(Base, TimestampMixin):
     )
     theme: Mapped[str] = mapped_column(
         String(THEME_LENGTH), default=DEFAULT_THEME, server_default=DEFAULT_THEME
+    )
+    timezone: Mapped[str] = mapped_column(
+        String(TIMEZONE_LENGTH),
+        default=DEFAULT_TIMEZONE,
+        server_default=DEFAULT_TIMEZONE,
     )
     show_request_id: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"

@@ -2,6 +2,7 @@ from app.models.user import User
 from app.models.user_preferences import (
     DEFAULT_LOCALE,
     DEFAULT_THEME,
+    DEFAULT_TIMEZONE,
     UserPreferences,
 )
 from app.schemas.preferences import PreferencesUpdate
@@ -25,6 +26,7 @@ class PreferencesService:
             user_id=user.id,
             locale=DEFAULT_LOCALE,
             theme=DEFAULT_THEME,
+            timezone=DEFAULT_TIMEZONE,
             show_request_id=True,
         )
 
