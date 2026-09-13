@@ -2,12 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AuthError
-from app.core.security import (
-    hash_password,
-    hash_single_use_token,
-    new_single_use_token,
-)
-from app.models.single_use_token import SingleUseToken, TokenPurpose
+from app.core.security import hash_password
+from app.models.single_use_token import TokenPurpose
 from app.schemas.user import normalize_email
 from app.services.protocols import (
     AccountMailerProtocol,
@@ -15,7 +11,7 @@ from app.services.protocols import (
     SingleUseTokenRepositoryProtocol,
     UserRepositoryProtocol,
 )
-from app.services.single_use_tokens import issued_within
+from app.services.single_use_tokens import SingleUseTokenIssuer, redeem
 
 INVALID_TOKEN = "This reset link is no longer valid"
 
@@ -32,11 +28,14 @@ class PasswordResetService:
         resend_cooldown: timedelta = timedelta(0),
     ) -> None:
         self._users = users
-        self._tokens = tokens
+        self._tokens = SingleUseTokenIssuer(
+            tokens,
+            TokenPurpose.PASSWORD_RESET,
+            lifetime=lifetime,
+            resend_cooldown=resend_cooldown,
+        )
         self._sessions = sessions
         self._mailer = mailer
-        self._lifetime = lifetime
-        self._resend_cooldown = resend_cooldown
 
     async def request(self, email: str) -> None:
         user = await self._users.get_by_email(normalize_email(email))
@@ -44,42 +43,22 @@ class PasswordResetService:
             return
 
         now = datetime.now(UTC)
-        if await self._sent_recently(user.id, now):
+        issued = await self._tokens.issue(user.id, now)
+        if issued is None:
             return
-        await self._tokens.revoke_all_for(user.id, TokenPurpose.PASSWORD_RESET, now)
-        token = new_single_use_token()
-        expires_at = now + self._lifetime
-        await self._tokens.create(
-            SingleUseToken(
-                token_hash=hash_single_use_token(token),
-                user_id=user.id,
-                purpose=TokenPurpose.PASSWORD_RESET,
-                expires_at=expires_at,
-            )
-        )
+        token, expires_at = issued
         await self._mailer.send_password_reset(user, token, expires_at)
-
-    async def _sent_recently(self, user_id: int, now: datetime) -> bool:
-        if not self._resend_cooldown:
-            return False
-        latest = await self._tokens.latest_for(user_id, TokenPurpose.PASSWORD_RESET)
-        return latest is not None and issued_within(latest, now, self._resend_cooldown)
 
     async def confirm(self, token: str, new_password: str) -> None:
         now = datetime.now(UTC)
-        stored = await self._tokens.get_active(
-            hash_single_use_token(token), TokenPurpose.PASSWORD_RESET, now
-        )
-        if stored is None:
+        found = await redeem(self._tokens, self._users, token, now)
+        if found is None:
             raise AuthError(INVALID_TOKEN, code=ErrorCode.AUTH_INVALID_TOKEN)
 
-        user = await self._users.get(stored.user_id)
-        if user is None:
-            raise AuthError(INVALID_TOKEN, code=ErrorCode.AUTH_INVALID_TOKEN)
-
+        stored, user = found
         user.hashed_password = hash_password(new_password)
         user.password_changed_at = now
         await self._users.save(user)
         await self._tokens.mark_used(stored, now)
-        await self._tokens.revoke_all_for(user.id, TokenPurpose.PASSWORD_RESET, now)
+        await self._tokens.revoke_all_for(user.id, now)
         await self._sessions.revoke_all_for_user(user.id, now)
