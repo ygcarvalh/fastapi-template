@@ -1,7 +1,8 @@
 import base64
 import binascii
+from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,21 @@ def decode_cursor(value: str) -> tuple[datetime, int]:
         return datetime.fromisoformat(moment), int(entry_id)
     except (binascii.Error, UnicodeDecodeError, ValueError) as error:
         raise ValueError("cursor is not one this API issued") from error
+
+
+class Identified(Protocol):
+    id: int
+
+
+# The extra row the repository fetched is the only evidence that a next page
+# exists, so it decides the cursor and never reaches the caller.
+def cursor_slice[EntryT: Identified](
+    found: Sequence[EntryT], limit: int, moment: Callable[[EntryT], datetime]
+) -> tuple[Sequence[EntryT], str | None]:
+    page = list(found[:limit])
+    if len(found) <= limit or not page:
+        return page, None
+    return page, encode_cursor(moment(page[-1]), page[-1].id)
 
 
 class PageParams(BaseModel):
