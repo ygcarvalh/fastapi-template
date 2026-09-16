@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.security import hash_password
+from app.core.storage.local import LocalStorage
+from app.db.demo import seed_demo
 from app.db.seed import seed_roles
 from app.db.session import get_session_factory
 from app.jobs.maintenance import (
@@ -83,6 +85,26 @@ async def seed() -> str:
         await seed_roles(session)
         await session.commit()
         return "seeded the base roles"
+
+
+async def demo_seed(if_enabled: bool = False) -> str:
+    settings = get_settings()
+    if if_enabled and not settings.demo_data_enabled:
+        return "demo data is turned off"
+
+    async with get_session_factory()() as session:
+        if (await session.execute(select(User))).scalars().first() is not None:
+            return "the database already has accounts; demo data was not written"
+
+        if (await session.execute(select(Role))).scalars().first() is None:
+            await seed_roles(session)
+
+        counts = await seed_demo(session, LocalStorage(settings.storage_root))
+        await session.commit()
+        return (
+            f"seeded {counts.users} demo users, {counts.items} items, "
+            f"{counts.attachments} attachments"
+        )
 
 
 async def prune() -> str:

@@ -45,6 +45,13 @@ def seed() -> None:
     typer.echo(_run(actions.seed()))
 
 
+@cli.command(
+    "demo-seed", help="Write the demo accounts and content into an empty database."
+)
+def demo_seed(if_enabled: bool = typer.Option(False, "--if-enabled")) -> None:
+    typer.echo(_run(actions.demo_seed(if_enabled)))
+
+
 @cli.command(help="Run every retention job once and report what it removed.")
 def prune() -> None:
     typer.echo(_run(actions.prune()))
