@@ -43,6 +43,7 @@ services:
       SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-8388608}
+      DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-false}
       # Which proxies uvicorn believes about X-Forwarded-For. Empty means
       # none, so a caller cannot pick its own IP for the rate limiter or the
       # request log. Set it to your reverse proxy's address in production.
@@ -54,6 +55,7 @@ services:
       - "${API_PORT:-8000}:8000"
     command: >
       sh -c "alembic upgrade head &&
+             fastapi-template demo-seed --if-enabled &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
 
   # Every message the API sends lands here instead of in someone's inbox.
