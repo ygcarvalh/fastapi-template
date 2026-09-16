@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     mail_resend_cooldown_seconds: Annotated[int, Field(ge=0)] = 60
     password_reset_expire_minutes: Annotated[int, Field(gt=0)] = 60
     require_verified_email: bool = False
+    demo_data_enabled: bool = False
 
     @property
     def attachment_type_set(self) -> frozenset[str]:
