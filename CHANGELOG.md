@@ -2,6 +2,12 @@
 
 All notable changes to this template. Generated from Conventional Commits with [git-cliff](https://git-cliff.org). Clear this file when you start a project from the template.
 
+## Unreleased
+
+### Features
+
+- Add a demo-seed CLI command behind DEMO_DATA_ENABLED
+
 ## 1.1.0 - 2026-09-12
 
 ### Bug fixes

@@ -240,6 +240,25 @@ uv run fastapi-template prune
 
 `app/cli/actions.py` holds the work and `app/cli/main.py` is the typer wiring, which is why the actions are covered by tests that never touch the terminal. The password is always prompted for and never accepted as a flag, so it does not land in shell history. typer arrives with `fastapi[standard]`, so this costs no dependency.
 
+### Demo data
+
+```bash
+uv run fastapi-template demo-seed
+```
+
+Set `DEMO_DATA_ENABLED=true` in `.env` and this also runs on `docker compose up`, right after migrations and before the API starts (`compose.yaml`'s `api` command). Run bare it seeds regardless of the flag, which is what you mean when you type the command yourself.
+
+It writes four accounts, each on `@example.com` with the password `Change!123`:
+
+| Email | Role | Notes |
+| --- | --- | --- |
+| `admin@example.com` | `superadmin` | Every permission |
+| `alice@example.com` | `user` | Owns items, preferences, and an attachment; one item is soft-deleted |
+| `bob@example.com` | `user` | Owns items |
+| `carol@example.com` | `user` | Never verified, so `REQUIRE_VERIFIED_EMAIL=true` has something to refuse |
+
+It refuses to run once the `users` table has any row, so it never overwrites a real account, and it is meant for local work only — never turn `DEMO_DATA_ENABLED` on against a database anyone else depends on.
+
 ## Starting your own project
 
 ```bash
