@@ -56,7 +56,8 @@ app/
   api/deps.py        # composition root; wires concrete repositories in
   services/          # business rules, HTTP-agnostic, raise domain exceptions
   services/protocols.py  # the repository interfaces the services depend on
-  repositories/      # the only layer that queries the database, all on BaseRepository
+  repositories/      # the only layer that queries the database, on CrudRepository/
+                     # SoftDeleteRepository or bare BaseRepository for append-only logs
   models/            # SQLAlchemy entities
   schemas/           # Pydantic request and response contracts
   core/              # config, security, error codes, domain exceptions, feature flags
@@ -92,11 +93,12 @@ Every way a resource can refuse needs a code in `app/core/error_codes.py`. `Doma
 ## Tests
 
 ```bash
-uv run pytest                       # whole suite
-uv run pytest tests/unit -v         # fast, no database
-uv run pytest path::test_name -v    # a single test
-uv run pytest --cov                 # fails under 90%
+uv run pytest                          # whole suite, enforces coverage
+uv run pytest tests/unit -v --no-cov   # fast, no database, no coverage gate
+uv run pytest path::test_name -v --no-cov  # a single test, no coverage gate
 ```
+
+`addopts = "--cov=app"` in `pyproject.toml` turns coverage on for every invocation, so a fast run against `tests/unit` alone needs `--no-cov` or it fails under 90% for measuring only a slice of the app.
 
 `tests/unit` covers logic against the typed fakes in `tests/unit/fakes.py`. `tests/integration` drives routes through a real PostgreSQL test database, wrapping each test in a transaction it rolls back afterwards, so tests stay isolated without rebuilding the schema between them.
 

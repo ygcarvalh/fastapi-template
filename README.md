@@ -20,7 +20,7 @@ Request → Router (HTTP) → Service (business logic) → Repository (DB) → P
 - `app/models` — SQLAlchemy ORM entities.
 - `app/schemas` — Pydantic request/response contracts.
 - `app/core` — config, security (JWT + password hashing), domain exceptions, feature flags.
-- `app/core/http` — the middleware stack: error envelope, security headers, CORS, body limit, rate limiting.
+- `app/core/http` — the middleware stack: error envelope, security headers, CORS, body limit, rate limiting, idempotency.
 - `app/core/observability` — structured logging, correlation IDs, the access log, Prometheus metrics.
 - `app/db` — declarative base, shared column mixins, engine and session lifecycle.
 
@@ -30,7 +30,7 @@ Dependencies point inward. Services never import `app/repositories`; they depend
 
 An example `Item` resource (owned by a `User`, JWT-protected) demonstrates the full slice end to end.
 
-Collection endpoints are paginated. `GET /api/v1/items` accepts `limit` (1 to 100, default 20) and `offset`, and returns a `Page` envelope — `items`, `total`, `limit`, `offset` — from `app/schemas/pagination.py`. Reuse `PageParams` and `Page[T]` for new collections rather than returning a bare list, so no endpoint is an unbounded query.
+Collection endpoints are paginated. `GET /api/v1/items` accepts `limit` (1 to 100, default 20) and `offset`, and returns a `Page` envelope — `items`, `total`, `limit`, `offset` — from `app/schemas/pagination.py`. Reuse `PageParams` and `Page[T]` for new collections rather than returning a bare list, so no endpoint is an unbounded query, and build the envelope with `Page.of(rows, mapper, total=total, params=page)` rather than assigning each field by hand. A collection too large to count, one that grows without bound, reaches instead for `CursorQuery` and `CursorPage.of(...)`; see the request log below.
 
 ## Public and private routes
 
@@ -43,7 +43,9 @@ Add `current_user: CurrentUser` to a handler that needs the caller's identity. L
 
 ## Security posture
 
-Login does not reveal whether an account exists. A wrong password and an unknown address both pay for a full bcrypt verification and come back with the same 401. Drop the dummy hash on the unknown-address path and the two diverge by roughly 300 ms, which is enough to enumerate the whole user table over the network.
+Login does not reveal whether an account exists. A wrong password and an unknown address both pay for a full password verification against a hash and come back with the same 401. Drop the dummy hash on the unknown-address path and the two diverge by however long that verification takes, which is enough to enumerate the whole user table over the network.
+
+Passwords hash with argon2id, off the event loop: `hash_password` and `verify_password` in `app/core/security.py` run `pwdlib`'s work on a worker thread with `anyio.to_thread.run_sync`, so a login under load does not stall the loop everyone else's requests share. `pwdlib` also carries bcrypt as a fallback verifier, so a hash stored before the switch still checks out; anything hashed from here on is argon2id.
 
 Registration answers 409 when an address is already taken, from the check *and* from the write. The check cannot close the race on its own, so a unique violation raised by the flush is read and turned into the same 409 — any other constraint failure stays a 500, because that one is a bug rather than a conflict.
 
@@ -100,11 +102,11 @@ Four settings to change before you deploy:
 
 ## Feature flags
 
-`FEATURE_FLAGS` names the features reachable in an environment, and `app/core/features.py` turns that list into a dependency:
+`FEATURE_FLAGS` names the features reachable in an environment, and `app/core/features.py` turns that list into a dependency. `protected_router` in `app/api/v1/routing.py` wires it onto a router in one call, alongside `RequireAuth` and the shared `responses` for the authenticated error envelope, rather than assembling that `APIRouter(...)` preamble by hand each time:
 
 ```python
-private_router = APIRouter(
-    dependencies=[require_feature(Feature.ITEMS), RequireAuth],
+private_router = protected_router(
+    prefix="/items", tags=["items"], feature=Feature.ITEMS
 )
 ```
 
@@ -216,7 +218,7 @@ The message is written in the language the account saved. `app/core/i18n/locale.
 
 ## Attachments
 
-`POST /api/v1/items/{id}/attachments` takes a multipart upload and stores it through a `Storage` protocol. The implementation that ships writes to a directory on this machine, `STORAGE_ROOT`, so a clone needs no object store; swapping in S3 is a class in `app/core/storage/` and one line in `app/api/deps.py`.
+`POST /api/v1/items/{id}/attachments` takes a multipart upload and stores it through a `Storage` protocol. `STORAGE_BACKEND` picks the implementation, a `Literal` the same way `MAIL_BACKEND` already picks the mail sender, and `get_storage()` in `app/api/deps.py` switches on it. The implementation that ships, `local`, writes to a directory on this machine, `STORAGE_ROOT`, so a clone needs no object store; swapping in S3 is a class in `app/core/storage/`, a new `Literal` value on `storage_backend` in `app/core/config.py`, and a branch in `get_storage()`.
 
 The stored name is a generated key, never the submitted filename, so a name carrying `../` reaches nothing. The filename is kept for the download header after being reduced to a plain basename. `ATTACHMENT_CONTENT_TYPES` is an allowlist and `MAX_ATTACHMENT_BYTES` a ceiling counted as the file streams, so a file over the limit is refused mid-upload and the partial one is swept.
 
@@ -367,7 +369,7 @@ It deletes in batches of 5000 and commits between them, so a retention run does 
 
 Past a few million rows, partition by month and drop whole partitions instead.
 
-This is the one collection that does not return a `total`. `GET /api/v1/requests` answers with a `CursorPage` — `items`, `limit`, `next_cursor` — because counting every matching row is what makes a table that grows by one row per request expensive to read, and an `offset` deep into it costs the same walk. The cursor is the ordering key `(created_at, id)`, base64 of the pair, so a row cannot shift under a reader because newer rows arrived above it. The endpoint reads one row past the limit to decide whether to hand back a cursor at all. Every other collection keeps `Page[T]` and its `total`: they are bounded, and a count over a few thousand rows is free. And bear in mind that only the auth routes are throttled, so a flood anywhere else writes rows at the attacker's pace: widen `REQUEST_LOG_EXCLUDED_PATHS`, or sample, before exposing this to the open internet.
+This is the one collection that does not return a `total`. `GET /api/v1/requests` answers with a `CursorPage`, built with `CursorPage.of(rows, mapper, limit=..., next_cursor=...)` — `items`, `limit`, `next_cursor` — because counting every matching row is what makes a table that grows by one row per request expensive to read, and an `offset` deep into it costs the same walk. `RequestLogQuery` extends `CursorQuery` from `app/schemas/pagination.py` for the `limit`/`cursor`/`since`/`until` fields every cursor-paginated query needs, and `RequestLogRepository` builds its condition with the same `cursor_condition` helper from `app/repositories/cursor.py` that `AuditLogRepository` uses. The cursor is the ordering key `(created_at, id)`, base64 of the pair, so a row cannot shift under a reader because newer rows arrived above it. The endpoint reads one row past the limit to decide whether to hand back a cursor at all. Every other collection keeps `Page[T]` and its `total`: they are bounded, and a count over a few thousand rows is free. And bear in mind that only the auth routes are throttled, so a flood anywhere else writes rows at the attacker's pace: widen `REQUEST_LOG_EXCLUDED_PATHS`, or sample, before exposing this to the open internet.
 
 Prometheus metrics are served at `/metrics`, from `prometheus-fastapi-instrumentator`. Set `METRICS_ENABLED=false` to withdraw the route. The counters live in the process, so behind more than one worker each reports only its own share, the same caveat the in-memory rate limiter carries.
 
@@ -438,12 +440,12 @@ uv run pytest path::test_name -v --no-cov  # a single test, no coverage gate
 Copy the `Item` slice, renaming across the layers:
 
 1. `app/models/<name>.py` — ORM model (register it in `app/models/__init__.py`).
-2. `app/schemas/<name>.py` — Pydantic schemas.
+2. `app/schemas/<name>.py` — Pydantic schemas. A read schema extends `ORMModel` from `app/schemas/base.py`, which carries `model_config = ConfigDict(from_attributes=True)` so it never has to be repeated per schema. A collection query that filters by a cursor rather than an offset extends `CursorQuery` from `app/schemas/pagination.py`.
 3. `app/services/protocols.py` — the repository interface the service needs.
-4. `app/repositories/<name>_repo.py` — queries implementing that interface, on top of `BaseRepository`, which holds the session and the flush, refresh, rowcount and batch-delete plumbing.
-5. `app/services/<name>_service.py` — business rules, depending on the protocol.
-6. `app/api/v1/routes/<name>.py` — routes; include it in `app/api/v1/router.py`.
-7. Add a dependency provider in `app/api/deps.py`.
+4. `app/repositories/<name>_repo.py` — queries implementing that interface, on top of `CrudRepository[Model]`, which already supplies `get`, `create`, `save` and `delete`; add `SoftDeleteRepository[Model]` too if the model carries `SoftDeleteMixin`, for `soft_delete`. Both sit on `BaseRepository`, which holds the session and the flush, refresh, rowcount and batch-delete plumbing. Write queries, not CRUD.
+5. `app/services/<name>_service.py` — business rules, depending on the protocol. Reach for `app/services/support.py` before writing a get-or-404, a retention sweep or an owner-scoped query by hand: `or_not_found` raises `NotFoundError` when a lookup comes back empty, `prune_before` turns a retention window into the repository's batch-delete call, and `scoped_to_owner` narrows a query to its caller unless the caller's scope is `all`.
+6. `app/api/v1/routes/<name>.py` — routes; declare the router with `protected_router(prefix=..., tags=..., feature=...)` from `app/api/v1/routing.py` rather than constructing `APIRouter` by hand, and include the router in `app/api/v1/router.py`. Build the response with `Page.of(...)` or, for a cursor-paginated collection, `CursorPage.of(...)`, both from `app/schemas/pagination.py`, instead of assembling the envelope field by field.
+7. Add a dependency provider in `app/api/deps.py`. A service constructed in exactly one place gets an ordinary `get_<name>_service` provider; one built from more than one caller, a background job as well as a route, splits into a `build_<name>_service(session)` function the provider wraps, the way `build_password_reset_service` and `build_request_log_service` do for `app/api/mail_tasks.py` and `app/api/request_recorder.py`.
 8. Write unit + integration tests first, with fakes in `tests/unit/fakes.py`.
 
 Three decisions come with the copy. Name a code in `app/core/error_codes.py` for every way the resource can refuse, so a frontend can translate it. Add `VersionMixin` to the model if two people can edit one row, because adding it later is a migration plus a rewrite of every write path. And decide whether the rows are audited: a table left out of `EXCLUDED_TABLES` in `app/core/audit/policy.py` is recorded column by column, which is right for domain data and wrong for anything holding a digest or a copy of a response.
@@ -507,12 +509,15 @@ app/
     request_recorder.py   # writes the access log row on its own session
     v1/
       router.py           # aggregates v1 routers, public ones first
+      routing.py          # protected_router factory: auth + feature flag + responses
       routes/             # auth, users, items, attachments, requests, roles, audit, features
   models/                 # SQLAlchemy models
-  schemas/                # Pydantic schemas, including pagination and the error envelope
-  repositories/           # database access
+  schemas/                # Pydantic schemas, including base.py's ORMModel, pagination and
+                          # the error envelope
+  repositories/           # database access, on CrudRepository/SoftDeleteRepository
   services/               # business logic
     protocols.py          # repository interfaces the services depend on
+    support.py            # shared helpers: or_not_found, prune_before, scoped_to_owner
 alembic/                  # migration environment + versions
 scripts/                  # bootstrap, database bootstrap, commit lint, retention entry points
 tests/
