@@ -1,8 +1,9 @@
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 from app.core.i18n.timezone import is_known
+from app.schemas.base import ORMModel
 
 Theme = Literal["light", "dark", "system"]
 
@@ -26,9 +27,7 @@ Features = Annotated[
 ]
 
 
-class PreferencesRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+class PreferencesRead(ORMModel):
     locale: str
     theme: Theme
     timezone: str

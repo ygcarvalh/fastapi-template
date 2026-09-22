@@ -2,9 +2,9 @@ import base64
 import binascii
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, Protocol, Self
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
 
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 100
@@ -42,6 +42,30 @@ def cursor_slice[EntryT: Identified](
     if len(found) <= limit or not page:
         return page, None
     return page, encode_cursor(moment(page[-1]), page[-1].id)
+
+
+class CursorQuery(BaseModel):
+    limit: Annotated[int, Field(ge=1, le=MAX_PAGE_LIMIT)] = DEFAULT_PAGE_LIMIT
+    cursor: Annotated[str, Field(pattern=CURSOR_REGEX)] | None = None
+    since: AwareDatetime | None = None
+    until: AwareDatetime | None = None
+
+    @field_validator("cursor")
+    @classmethod
+    def reject_a_cursor_we_did_not_issue(cls, value: str | None) -> str | None:
+        if value is not None:
+            decode_cursor(value)
+        return value
+
+    @model_validator(mode="after")
+    def reject_an_inverted_window(self) -> Self:
+        if (
+            self.since is not None
+            and self.until is not None
+            and self.since > self.until
+        ):
+            raise ValueError("since must not be later than until")
+        return self
 
 
 class PageParams(BaseModel):
