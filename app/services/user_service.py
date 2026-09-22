@@ -51,7 +51,7 @@ class UserService:
         user = User(
             email=data.email,
             name=data.name,
-            hashed_password=hash_password(data.password),
+            hashed_password=await hash_password(data.password),
             roles=[await self._role(UserRole.ADMIN if first else UserRole.USER)],
         )
         try:
@@ -108,7 +108,7 @@ class UserService:
     # What the account owns goes with it, so a deactivated address that
     # registers again starts empty.
     async def deactivate(self, user: User, password: str) -> None:
-        if not verify_password(password, user.hashed_password):
+        if not await verify_password(password, user.hashed_password):
             raise ForbiddenError(
                 "Password is incorrect", code=ErrorCode.USER_PASSWORD_INCORRECT
             )

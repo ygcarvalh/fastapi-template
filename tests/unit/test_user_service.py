@@ -262,7 +262,9 @@ async def test_any_other_constraint_failure_is_still_a_crash() -> None:
 
 
 async def test_deactivating_an_account_takes_its_items_with_it() -> None:
-    user = User(email="leaving@example.com", hashed_password=hash_password("secret123"))
+    user = User(
+        email="leaving@example.com", hashed_password=await hash_password("secret123")
+    )
     user.id = 3
     items = FakeItemRepository(
         [Item(title="mine", owner_id=3), Item(title="theirs", owner_id=4)]
@@ -278,7 +280,9 @@ async def test_deactivating_an_account_takes_its_items_with_it() -> None:
 
 
 async def test_deactivating_with_the_wrong_password_is_refused() -> None:
-    user = User(email="leaving@example.com", hashed_password=hash_password("secret123"))
+    user = User(
+        email="leaving@example.com", hashed_password=await hash_password("secret123")
+    )
     user.id = 3
     items = FakeItemRepository([Item(title="mine", owner_id=3)])
     users = FakeUserRepository([user])

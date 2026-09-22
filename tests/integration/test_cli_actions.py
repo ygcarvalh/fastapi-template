@@ -47,7 +47,7 @@ async def test_creating_a_superuser_hashes_the_password(
 
     user = await _stored(factory)
     assert user.hashed_password != PASSWORD
-    assert verify_password(PASSWORD, user.hashed_password)
+    assert await verify_password(PASSWORD, user.hashed_password)
 
 
 async def test_a_superuser_holds_the_administrator_role(

@@ -46,7 +46,7 @@ async def create_superuser(email: str, password: str) -> str:
             raise ConflictError(f"{email} is already registered")
         user = User(
             email=normalize_email(email),
-            hashed_password=hash_password(password),
+            hashed_password=await hash_password(password),
             email_verified_at=datetime.now(UTC),
             roles=[await _role(session, UserRole.ADMIN)],
         )

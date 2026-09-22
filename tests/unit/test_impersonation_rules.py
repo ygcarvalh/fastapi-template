@@ -14,7 +14,7 @@ from app.core.authorization import (
     may_impersonate,
 )
 from app.core.exceptions import ForbiddenError
-from app.core.security import decode_access_token, hash_password
+from app.core.security import decode_access_token
 from app.models.role import Role, Scope
 from app.models.user import User
 from app.schemas.audit_log import AuditLogQuery
@@ -28,12 +28,10 @@ from tests.unit.fakes import (
     user_role,
 )
 
-PASSWORD = "the-correct-password"
-
 
 def _user(user_id: int, *roles: Role) -> User:
     account = User(
-        email=f"user{user_id}@example.com", hashed_password=hash_password(PASSWORD)
+        email=f"user{user_id}@example.com", hashed_password="not-a-real-hash"
     )
     account.id = user_id
     account.roles = list(roles)

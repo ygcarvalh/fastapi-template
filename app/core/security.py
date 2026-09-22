@@ -4,15 +4,17 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, NamedTuple
 from uuid import uuid4
 
+import anyio.to_thread
 import jwt
 from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from pwdlib.hashers.bcrypt import BcryptHasher
 
 from app.core.config import get_settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AuthError
 
-password_hash = PasswordHash((BcryptHasher(),))
+password_hash = PasswordHash((Argon2Hasher(), BcryptHasher()))
 
 TokenType = Literal["access", "refresh"]
 
@@ -37,12 +39,12 @@ class AccessClaims(NamedTuple):
     issued_at: datetime
 
 
-def hash_password(password: str) -> str:
-    return password_hash.hash(password)
+async def hash_password(password: str) -> str:
+    return await anyio.to_thread.run_sync(password_hash.hash, password)
 
 
-def verify_password(password: str, hashed: str) -> bool:
-    return password_hash.verify(password, hashed)
+async def verify_password(password: str, hashed: str) -> bool:
+    return await anyio.to_thread.run_sync(password_hash.verify, password, hashed)
 
 
 # A digest, not a password hash: the token is already high-entropy, and the
