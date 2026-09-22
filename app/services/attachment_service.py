@@ -1,21 +1,19 @@
 import asyncio
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Sequence
 from pathlib import PurePosixPath
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 from uuid import uuid4
 
 import structlog
-from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session as SyncSession
 
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import (
     ForbiddenError,
-    NotFoundError,
     PayloadTooLargeError,
 )
 from app.core.storage.backend import Storage
+from app.db.transactional_hooks import run_after_outcome
 from app.models.attachment import Attachment
 from app.services.protocols import (
     AttachmentRepositoryProtocol,
@@ -115,8 +113,11 @@ class AttachmentService:
         self._delete_key_on_commit(stored.key)
 
     async def _owned_item(self, item_id: int, owner_id: int) -> None:
-        if await self._items.get_for_owner(item_id, owner_id) is None:
-            raise NotFoundError("Item not found", code=ErrorCode.ITEM_NOT_FOUND)
+        or_not_found(
+            await self._items.get_for_owner(item_id, owner_id),
+            "Item not found",
+            ErrorCode.ITEM_NOT_FOUND,
+        )
 
     async def _bounded(
         self, chunks: AsyncIterator[bytes], key: str
@@ -134,68 +135,10 @@ class AttachmentService:
             yield chunk
 
     def _delete_key_on_rollback(self, key: str) -> None:
-        self._settle_key_on_next_outcome(key, delete_on="after_rollback")
+        run_after_outcome(self._session, on_rollback=lambda: self._schedule_delete(key))
 
     def _delete_key_on_commit(self, key: str) -> None:
-        self._settle_key_on_next_outcome(key, delete_on="after_commit")
-
-    def _settle_key_on_next_outcome(
-        self, key: str, *, delete_on: Literal["after_commit", "after_rollback"]
-    ) -> None:
-        # The transaction this key's fate depends on ends in exactly one of
-        # `after_commit` or `after_rollback` — never both. Both hooks are
-        # registered as a pair so whichever one the session actually fires
-        # next retires the pair together; otherwise the hook we didn't act on
-        # would linger on the session and could misfire against some later,
-        # unrelated transaction (e.g. a second add()/remove() sharing this
-        # same long-lived session).
-        sync_session = self._session.sync_session
-        retired = False
-
-        def on_commit(session: SyncSession) -> None:
-            nonlocal retired
-            # SQLAlchemy fires after_commit/after_rollback for SAVEPOINT
-            # (nested) transactions too, not only the outermost one. A
-            # begin_nested() release or rollback happening while our own,
-            # outer transaction is still open is not "our" outcome yet —
-            # acting on it here would delete/keep files based on a
-            # sub-transaction that could still be undone or superseded by
-            # the real outer commit/rollback later.
-            if retired or session.in_nested_transaction():
-                return
-            retired = True
-            self._deregister_pair(sync_session, on_commit, on_rollback)
-            if delete_on == "after_commit":
-                self._schedule_delete(key)
-
-        def on_rollback(session: SyncSession) -> None:
-            nonlocal retired
-            if retired or session.in_nested_transaction():
-                return
-            retired = True
-            self._deregister_pair(sync_session, on_commit, on_rollback)
-            if delete_on == "after_rollback":
-                self._schedule_delete(key)
-
-        event.listen(sync_session, "after_commit", on_commit)
-        event.listen(sync_session, "after_rollback", on_rollback)
-
-    @staticmethod
-    def _deregister_pair(
-        sync_session: SyncSession,
-        on_commit: Callable[[SyncSession], None],
-        on_rollback: Callable[[SyncSession], None],
-    ) -> None:
-        def _remove() -> None:
-            event.remove(sync_session, "after_commit", on_commit)
-            event.remove(sync_session, "after_rollback", on_rollback)
-
-        # `event.remove` must not run while SQLAlchemy is still iterating the
-        # listener deque for this very dispatch (it raises "deque mutated
-        # during iteration"), so the removal is deferred to the next loop
-        # iteration, once the dispatch that invoked this listener has
-        # unwound.
-        asyncio.get_running_loop().call_soon(_remove)
+        run_after_outcome(self._session, on_commit=lambda: self._schedule_delete(key))
 
     def _schedule_delete(self, key: str) -> None:
         task = asyncio.get_running_loop().create_task(self._delete_quietly(key))
