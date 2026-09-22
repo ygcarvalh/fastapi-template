@@ -42,7 +42,7 @@ def test_decode_token_without_a_subject_raises() -> None:
     settings = get_settings()
     token = jwt.encode(
         {"exp": datetime.now(UTC) + timedelta(minutes=5)},
-        settings.secret_key,
+        settings.secret_key.get_secret_value(),
         algorithm=settings.jwt_algorithm,
     )
 
@@ -54,7 +54,7 @@ def test_decode_expired_token_raises() -> None:
     settings = get_settings()
     token = jwt.encode(
         {"sub": "1", "exp": datetime.now(UTC) - timedelta(minutes=1)},
-        settings.secret_key,
+        settings.secret_key.get_secret_value(),
         algorithm=settings.jwt_algorithm,
     )
 

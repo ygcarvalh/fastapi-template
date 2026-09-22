@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PLACEHOLDER_SECRET_KEY = "change-me-in-production-to-a-random-32-byte-string"
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     db_pool_size: Annotated[int, Field(gt=0)] = 5
     db_max_overflow: Annotated[int, Field(gt=0)] = 10
     db_pool_recycle: Annotated[int, Field(gt=0)] = 1800
-    secret_key: Annotated[str, Field(min_length=MIN_SECRET_KEY_LENGTH)]
+    secret_key: Annotated[SecretStr, Field(min_length=MIN_SECRET_KEY_LENGTH)]
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     smtp_host: str = "localhost"
     smtp_port: Annotated[int, Field(gt=0, le=65535)] = 587
     smtp_username: str | None = None
-    smtp_password: str | None = None
+    smtp_password: SecretStr | None = None
     smtp_starttls: bool = True
     email_verification_expire_hours: Annotated[int, Field(gt=0)] = 48
     mail_resend_cooldown_seconds: Annotated[int, Field(ge=0)] = 60
@@ -119,8 +119,8 @@ class Settings(BaseSettings):
 
     @field_validator("secret_key")
     @classmethod
-    def reject_placeholder_secret_key(cls, value: str) -> str:
-        if value == PLACEHOLDER_SECRET_KEY:
+    def reject_placeholder_secret_key(cls, value: SecretStr) -> SecretStr:
+        if value.get_secret_value() == PLACEHOLDER_SECRET_KEY:
             raise ValueError(
                 "SECRET_KEY is still the .env.example placeholder; "
                 "generate a real one with: openssl rand -hex 32"

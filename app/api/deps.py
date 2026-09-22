@@ -59,7 +59,9 @@ def get_mail_sender() -> MailSender:
             host=settings.smtp_host,
             port=settings.smtp_port,
             username=settings.smtp_username,
-            password=settings.smtp_password,
+            password=settings.smtp_password.get_secret_value()
+            if settings.smtp_password is not None
+            else None,
             use_starttls=settings.smtp_starttls,
         )
     return LoggingMailSender(settings.mail_from)

@@ -78,7 +78,11 @@ def _create_token(
     }
     if impersonator is not None:
         payload[IMPERSONATOR_CLAIM] = {"sub": impersonator}
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        payload,
+        settings.secret_key.get_secret_value(),
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def create_access_token(subject: str) -> str:
@@ -113,7 +117,9 @@ def _decode(token: str, expected_type: TokenType) -> dict[str, Any]:
     settings = get_settings()
     try:
         payload: dict[str, Any] = jwt.decode(
-            token, settings.secret_key, algorithms=[settings.jwt_algorithm]
+            token,
+            settings.secret_key.get_secret_value(),
+            algorithms=[settings.jwt_algorithm],
         )
     except jwt.PyJWTError as exc:
         raise invalid_credentials() from exc
