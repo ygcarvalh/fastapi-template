@@ -102,15 +102,20 @@ EmailVerificationServiceDep = Annotated[
 ]
 
 
-def get_password_reset_service(session: SessionDep) -> PasswordResetService:
+def build_password_reset_service(session: AsyncSession) -> PasswordResetService:
+    settings = get_settings()
     return PasswordResetService(
         UserRepository(session),
         SingleUseTokenRepository(session),
         RefreshTokenRepository(session),
         get_account_mailer(session),
-        lifetime=timedelta(minutes=get_settings().password_reset_expire_minutes),
-        resend_cooldown=timedelta(seconds=get_settings().mail_resend_cooldown_seconds),
+        lifetime=timedelta(minutes=settings.password_reset_expire_minutes),
+        resend_cooldown=timedelta(seconds=settings.mail_resend_cooldown_seconds),
     )
+
+
+def get_password_reset_service(session: SessionDep) -> PasswordResetService:
+    return build_password_reset_service(session)
 
 
 PasswordResetServiceDep = Annotated[
@@ -165,8 +170,12 @@ def get_item_service(session: SessionDep) -> ItemService:
 ItemServiceDep = Annotated[ItemService, Depends(get_item_service)]
 
 
-def get_request_log_service(session: SessionDep) -> RequestLogService:
+def build_request_log_service(session: AsyncSession) -> RequestLogService:
     return RequestLogService(RequestLogRepository(session))
+
+
+def get_request_log_service(session: SessionDep) -> RequestLogService:
+    return build_request_log_service(session)
 
 
 RequestLogServiceDep = Annotated[RequestLogService, Depends(get_request_log_service)]
