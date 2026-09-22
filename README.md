@@ -428,9 +428,9 @@ Red → green → refactor:
 4. Refactor with the test as a safety net.
 
 ```bash
-uv run pytest                       # whole suite
-uv run pytest tests/unit -v         # fast unit tests
-uv run pytest path::test_name -v    # a single test
+uv run pytest                          # whole suite, enforces coverage
+uv run pytest tests/unit -v --no-cov   # fast unit tests, no coverage gate
+uv run pytest path::test_name -v --no-cov  # a single test, no coverage gate
 ```
 
 ## Adding a new resource
