@@ -14,6 +14,7 @@ from app.models.user_preferences import UserPreferences
 from app.schemas.audit_log import AuditLogQuery
 from app.schemas.pagination import decode_cursor
 from app.schemas.request_log import RequestLogQuery, outcome_for
+from app.services.protocols import DELETE_BATCH_SIZE
 
 
 class FakeUserRepository:
@@ -296,7 +297,7 @@ class FakeAuditLogRepository:
         return next((entry for entry in self._entries if entry.id == entry_id), None)
 
     async def delete_batch_occurred_before(
-        self, cutoff: datetime, batch_size: int
+        self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int:
         doomed = [entry for entry in self._entries if entry.occurred_at < cutoff][
             :batch_size

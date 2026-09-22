@@ -1,12 +1,12 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, select, tuple_
+from sqlalchemy import ColumnElement, select
 
 from app.models.audit_log import AuditLog
 from app.repositories.base import DELETE_BATCH_SIZE, BaseRepository
+from app.repositories.cursor import cursor_condition
 from app.schemas.audit_log import AuditLogQuery
-from app.schemas.pagination import decode_cursor
 
 
 def _where(query: AuditLogQuery) -> list[ColumnElement[bool]]:
@@ -27,11 +27,9 @@ def _where(query: AuditLogQuery) -> list[ColumnElement[bool]]:
         conditions.append(AuditLog.occurred_at >= query.since)
     if query.until is not None:
         conditions.append(AuditLog.occurred_at <= query.until)
-    if query.cursor is not None:
-        moment, entry_id = decode_cursor(query.cursor)
-        conditions.append(
-            tuple_(AuditLog.occurred_at, AuditLog.id) < (moment, entry_id)
-        )
+    condition = cursor_condition(AuditLog.occurred_at, AuditLog.id, query.cursor)
+    if condition is not None:
+        conditions.append(condition)
     return conditions
 
 

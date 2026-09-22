@@ -15,6 +15,8 @@ from app.models.user_preferences import UserPreferences
 from app.schemas.audit_log import AuditLogQuery
 from app.schemas.request_log import RequestLogQuery
 
+DELETE_BATCH_SIZE = 5000
+
 
 class UserRepositoryProtocol(Protocol):
     async def get_by_email(self, email: str) -> User | None: ...
@@ -132,7 +134,7 @@ class AuditLogRepositoryProtocol(Protocol):
     async def get(self, entry_id: int) -> AuditLog | None: ...
 
     async def delete_batch_occurred_before(
-        self, cutoff: datetime, batch_size: int
+        self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int: ...
 
 
