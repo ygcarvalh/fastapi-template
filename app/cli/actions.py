@@ -40,6 +40,9 @@ async def _role(session: AsyncSession, name: str) -> Role:
     return found
 
 
+# Doesn't route through UserService.register: that method has no "force admin,
+# skip email verification" mode, and forcing one would fight its own rules
+# (first-user-becomes-admin, email verification flow).
 async def create_superuser(email: str, password: str) -> str:
     async with get_session_factory()() as session:
         users = UserRepository(session)

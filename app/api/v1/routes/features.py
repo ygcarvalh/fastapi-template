@@ -6,6 +6,8 @@ from app.schemas.feature import FeatureList
 private_router = protected_router(prefix="/features", tags=["features"])
 
 
+# Pure function composition, no repository access — a service here would add
+# indirection with no benefit.
 @private_router.get("")
 async def list_features(current_user: CurrentUser) -> FeatureList:
     inherited = inherited_features(
