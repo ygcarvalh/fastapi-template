@@ -18,8 +18,6 @@ from app.db.seed import seed_roles
 from app.db.session import get_session
 from app.main import create_app
 
-app = create_app()
-
 
 @pytest.fixture(autouse=True)
 def fresh_rate_limits() -> None:
@@ -73,6 +71,8 @@ async def db_session(engine: AsyncEngine) -> AsyncGenerator[AsyncSession]:
 
 @pytest_asyncio.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient]:
+    app = create_app()
+
     async def override_get_session() -> AsyncGenerator[AsyncSession]:
         yield db_session
         await db_session.commit()
@@ -81,7 +81,6 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-    app.dependency_overrides.clear()
 
 
 @pytest.fixture
