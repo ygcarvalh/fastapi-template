@@ -18,9 +18,12 @@ from app.jobs.maintenance import (
 )
 from app.models.role import Role
 from app.models.user import User, UserRole
+from app.repositories.item_repo import ItemRepository
+from app.repositories.role_repo import RoleRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.user import normalize_email
 from app.services.protocols import UserRepositoryProtocol
+from app.services.user_service import UserService
 
 
 async def _load(users: UserRepositoryProtocol, email: str) -> User:
@@ -31,9 +34,7 @@ async def _load(users: UserRepositoryProtocol, email: str) -> User:
 
 
 async def _role(session: AsyncSession, name: str) -> Role:
-    found = (
-        await session.execute(select(Role).where(Role.name == name))
-    ).scalar_one_or_none()
+    found = await RoleRepository(session).get_by_name(name)
     if found is None:
         raise NotFoundError(f"no role is named {name}")
     return found
@@ -59,13 +60,12 @@ async def grant_role(email: str, role_name: str) -> str:
     async with get_session_factory()() as session:
         users = UserRepository(session)
         user = await _load(users, email)
-        role = await _role(session, role_name)
-        if any(held.name == role.name for held in user.roles):
-            return f"{user.email} already holds {role.name}"
-        user.roles.append(role)
-        await users.save(user)
+        if any(held.name == role_name for held in user.roles):
+            return f"{user.email} already holds {role_name}"
+        service = UserService(users, ItemRepository(session), RoleRepository(session))
+        user = await service.add_role(user.id, role_name)
         await session.commit()
-        return f"{user.email} now holds {role.name}"
+        return f"{user.email} now holds {role_name}"
 
 
 async def verify_email(email: str) -> str:
