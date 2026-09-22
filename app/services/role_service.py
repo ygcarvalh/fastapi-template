@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from app.core.authorization import granted, is_superuser
 from app.core.error_codes import ErrorCode
-from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.exceptions import ConflictError, ForbiddenError
 from app.models.role import Permission, Role, RolePermission, Scope
 from app.models.user import User, UserRole
 from app.schemas.role import GrantRead, RoleWrite
@@ -91,10 +91,10 @@ class RoleService:
     async def _grants(self, data: RoleWrite) -> list[RolePermission]:
         grants = []
         for wanted in data.grants:
-            permission = await self._permissions.get(wanted.resource, wanted.action)
-            if permission is None:
-                raise NotFoundError(
-                    "Permission not found", code=ErrorCode.PERMISSION_NOT_FOUND
-                )
+            permission = or_not_found(
+                await self._permissions.get(wanted.resource, wanted.action),
+                "Permission not found",
+                ErrorCode.PERMISSION_NOT_FOUND,
+            )
             grants.append(RolePermission(permission=permission, scope=wanted.scope))
         return grants
