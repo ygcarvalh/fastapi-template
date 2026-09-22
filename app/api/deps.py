@@ -149,6 +149,7 @@ def get_attachment_service(session: SessionDep) -> AttachmentService:
         AttachmentRepository(session),
         ItemRepository(session),
         get_storage(),
+        session,
         max_bytes=settings.max_attachment_bytes,
         allowed_types=settings.attachment_type_set,
     )
