@@ -12,17 +12,10 @@ from testcontainers.community.postgres import PostgresContainer
 
 from app import models as _models  # noqa: F401
 from app.core.config import get_settings
-from app.core.http.rate_limit import reset_rate_limits
 from app.db.base import Base
 from app.db.seed import seed_roles
 from app.db.session import get_session
 from app.main import create_app
-
-
-@pytest.fixture(autouse=True)
-def fresh_rate_limits() -> None:
-    reset_rate_limits()
-
 
 POSTGRES_IMAGE = "postgres:17-alpine"
 
