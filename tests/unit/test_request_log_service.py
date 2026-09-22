@@ -15,7 +15,7 @@ from app.schemas.request_log import (
 from app.services.request_log_service import RequestLogService
 from tests.unit.fakes import FakeRequestLogRepository, user_role
 
-NOW = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+NOW = datetime.now(UTC)
 
 
 def _entry(
