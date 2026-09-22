@@ -3,8 +3,9 @@ from datetime import datetime
 
 from sqlalchemy import ColumnElement, select
 
+from app.core.constants import DELETE_BATCH_SIZE
 from app.models.audit_log import AuditLog
-from app.repositories.base import DELETE_BATCH_SIZE, BaseRepository
+from app.repositories.base import BaseRepository
 from app.repositories.cursor import cursor_condition
 from app.schemas.audit_log import AuditLogQuery
 

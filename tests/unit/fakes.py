@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from app.core.authorization import BASE_ROLES
+from app.core.constants import DELETE_BATCH_SIZE
 from app.models.audit_log import AuditLog
 from app.models.idempotency_key import IdempotencyKey
 from app.models.item import Item
@@ -14,7 +15,6 @@ from app.models.user_preferences import UserPreferences
 from app.schemas.audit_log import AuditLogQuery
 from app.schemas.pagination import decode_cursor
 from app.schemas.request_log import RequestLogQuery, outcome_for
-from app.services.protocols import DELETE_BATCH_SIZE
 
 
 class FakeUserRepository:
@@ -233,7 +233,7 @@ class FakeRequestLogRepository:
         return self._matching(query)[: query.limit + 1]
 
     async def delete_batch_created_before(
-        self, cutoff: datetime, batch_size: int
+        self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int:
         doomed = [entry for entry in self._entries if entry.created_at < cutoff][
             :batch_size

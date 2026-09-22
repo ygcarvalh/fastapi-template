@@ -6,9 +6,8 @@ from sqlalchemy import CursorResult, Executable, Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from app.core.constants import DELETE_BATCH_SIZE
 from app.db.mixins import SoftDeleteMixin
-
-DELETE_BATCH_SIZE = 5000
 
 
 class BaseRepository:

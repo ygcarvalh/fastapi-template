@@ -2,10 +2,10 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 from app.core.audit.context import audit_suppressed
+from app.core.constants import DELETE_BATCH_SIZE
 from app.db.session import get_session_factory
 from app.jobs.locking import held_by_one_replica
 from app.repositories.audit_log_repo import AuditLogRepository
-from app.repositories.base import DELETE_BATCH_SIZE
 from app.repositories.idempotency_repo import IdempotencyRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.request_log_repo import RequestLogRepository

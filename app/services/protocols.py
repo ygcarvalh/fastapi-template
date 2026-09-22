@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
+from app.core.constants import DELETE_BATCH_SIZE
 from app.models.attachment import Attachment
 from app.models.audit_log import AuditLog
 from app.models.idempotency_key import IdempotencyKey
@@ -14,8 +15,6 @@ from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.schemas.audit_log import AuditLogQuery
 from app.schemas.request_log import RequestLogQuery
-
-DELETE_BATCH_SIZE = 5000
 
 
 class UserRepositoryProtocol(Protocol):
@@ -122,7 +121,7 @@ class RequestLogRepositoryProtocol(Protocol):
     async def list_page(self, query: RequestLogQuery) -> Sequence[RequestLog]: ...
 
     async def delete_batch_created_before(
-        self, cutoff: datetime, batch_size: int
+        self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int: ...
 
 
