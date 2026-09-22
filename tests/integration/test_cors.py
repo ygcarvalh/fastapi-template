@@ -5,7 +5,9 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import get_settings
-from app.main import app, create_app
+from app.main import create_app
+
+app = create_app()
 
 ALLOWED = "https://app.example.com"
 OTHER = "https://evil.example.com"

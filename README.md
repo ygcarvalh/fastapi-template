@@ -324,7 +324,7 @@ uv run alembic upgrade head
 ## Run the dev server
 
 ```bash
-uv run fastapi dev app/main.py
+uv run fastapi dev --entrypoint app.main:create_app
 ```
 
 Open http://127.0.0.1:8000/docs for the interactive API.
@@ -332,7 +332,7 @@ Open http://127.0.0.1:8000/docs for the interactive API.
 That binds loopback only, which is right for development and wrong for a Prometheus running in a container: it reaches the host through the Docker gateway, a different interface, so the target shows as down while `curl` from your shell works perfectly. Bind every interface when you want the metrics scraped:
 
 ```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
 ## Observability

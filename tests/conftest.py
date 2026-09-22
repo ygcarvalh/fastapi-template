@@ -16,7 +16,9 @@ from app.core.http.rate_limit import reset_rate_limits
 from app.db.base import Base
 from app.db.seed import seed_roles
 from app.db.session import get_session
-from app.main import app
+from app.main import create_app
+
+app = create_app()
 
 
 @pytest.fixture(autouse=True)
