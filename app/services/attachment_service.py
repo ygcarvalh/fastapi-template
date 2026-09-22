@@ -21,6 +21,7 @@ from app.services.protocols import (
     AttachmentRepositoryProtocol,
     ItemRepositoryProtocol,
 )
+from app.services.support import or_not_found
 
 logger = structlog.stdlib.get_logger("app.attachments")
 
@@ -99,12 +100,11 @@ class AttachmentService:
         return await self._repo.list_for_item(item_id)
 
     async def get_for_owner(self, attachment_id: int, owner_id: int) -> Attachment:
-        stored = await self._repo.get_for_owner(attachment_id, owner_id)
-        if stored is None:
-            raise NotFoundError(
-                "Attachment not found", code=ErrorCode.ATTACHMENT_NOT_FOUND
-            )
-        return stored
+        return or_not_found(
+            await self._repo.get_for_owner(attachment_id, owner_id),
+            "Attachment not found",
+            ErrorCode.ATTACHMENT_NOT_FOUND,
+        )
 
     def read(self, attachment: Attachment) -> AsyncIterator[bytes]:
         return self._storage.open(attachment.key)

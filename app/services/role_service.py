@@ -10,6 +10,7 @@ from app.services.protocols import (
     RoleRepositoryProtocol,
     UserRepositoryProtocol,
 )
+from app.services.support import or_not_found
 
 NAME_TAKEN = "Role name already in use"
 BUILT_IN = frozenset({UserRole.USER, UserRole.ADMIN})
@@ -37,10 +38,9 @@ class RoleService:
         return await self._users.list_for_role(role.id)
 
     async def get(self, role_id: int) -> Role:
-        role = await self._roles.get(role_id)
-        if role is None:
-            raise NotFoundError("Role not found", code=ErrorCode.ROLE_NOT_FOUND)
-        return role
+        return or_not_found(
+            await self._roles.get(role_id), "Role not found", ErrorCode.ROLE_NOT_FOUND
+        )
 
     async def create(self, data: RoleWrite) -> Role:
         if await self._roles.get_by_name(data.name) is not None:
