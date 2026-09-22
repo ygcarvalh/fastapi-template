@@ -1,14 +1,8 @@
-from fastapi import APIRouter, status
+from fastapi import status
 
-from app.api.deps import (
-    CurrentUser,
-    RequireAuth,
-    RoleServiceDep,
-    UserServiceDep,
-    require_permission,
-)
+from app.api.deps import CurrentUser, RoleServiceDep, UserServiceDep, require_permission
+from app.api.v1.routing import protected_router
 from app.core.authorization import CREATE, DELETE, READ, ROLES, UPDATE
-from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.role import (
     MemberAssignment,
     PermissionRead,
@@ -18,18 +12,8 @@ from app.schemas.role import (
 )
 from app.schemas.user import UserRead
 
-private_router = APIRouter(
-    prefix="/roles",
-    tags=["roles"],
-    dependencies=[RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
-)
-permissions_router = APIRouter(
-    prefix="/permissions",
-    tags=["roles"],
-    dependencies=[RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
-)
+private_router = protected_router(prefix="/roles", tags=["roles"])
+permissions_router = protected_router(prefix="/permissions", tags=["roles"])
 
 
 @permissions_router.get("", dependencies=[require_permission(ROLES, READ)])

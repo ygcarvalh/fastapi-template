@@ -1,26 +1,18 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import Path, Query
 
-from app.api.deps import (
-    CurrentUser,
-    RequestLogServiceDep,
-    RequireAuth,
-    require_permission,
-)
+from app.api.deps import CurrentUser, RequestLogServiceDep, require_permission
+from app.api.v1.routing import protected_router
 from app.core.authorization import READ, REQUEST_LOG
-from app.core.features import Feature, require_feature
+from app.core.features import Feature
 from app.core.observability.request_context import REQUEST_ID_REGEX
 from app.models.role import Scope
-from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import CursorPage
 from app.schemas.request_log import RequestLogQuery, RequestLogRead
 
-private_router = APIRouter(
-    prefix="/requests",
-    tags=["requests"],
-    dependencies=[require_feature(Feature.REQUEST_LOG), RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
+private_router = protected_router(
+    prefix="/requests", tags=["requests"], feature=Feature.REQUEST_LOG
 )
 
 

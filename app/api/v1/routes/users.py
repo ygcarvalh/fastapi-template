@@ -7,11 +7,11 @@ from app.api.deps import (
     EmailVerificationServiceDep,
     ForbidImpersonation,
     PreferencesServiceDep,
-    RequireAuth,
     RoleServiceDep,
     UserServiceDep,
     require_permission,
 )
+from app.api.v1.routing import protected_router
 from app.core.authorization import (
     DELETE,
     FEATURE_FLAGS,
@@ -25,7 +25,6 @@ from app.core.config import get_settings
 from app.core.features import available_features
 from app.core.http.rate_limit import limiter
 from app.models.role import Scope
-from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import Page, PageParams
 from app.schemas.preferences import (
     AccountFeaturesRead,
@@ -43,12 +42,7 @@ from app.schemas.user import (
 )
 
 public_router = APIRouter(prefix="/users", tags=["users"])
-private_router = APIRouter(
-    prefix="/users",
-    tags=["users"],
-    dependencies=[RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
-)
+private_router = protected_router(prefix="/users", tags=["users"])
 
 
 @public_router.post("", status_code=status.HTTP_201_CREATED)

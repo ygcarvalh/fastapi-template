@@ -1,20 +1,18 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import Query, Response, status
 
-from app.api.deps import CurrentUser, ItemServiceDep, RequireAuth
-from app.core.features import Feature, require_feature
+from app.api.deps import CurrentUser, ItemServiceDep
+from app.api.v1.routing import protected_router
+from app.core.features import Feature
 from app.core.http.concurrency import ETAG_HEADER, IfMatch, etag_for
 from app.models.item import Item
-from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES, CONCURRENCY_ERROR_RESPONSES
+from app.schemas.error import CONCURRENCY_ERROR_RESPONSES
 from app.schemas.item import ItemCreate, ItemRead, ItemUpdate
 from app.schemas.pagination import Page, PageParams
 
-private_router = APIRouter(
-    prefix="/items",
-    tags=["items"],
-    dependencies=[require_feature(Feature.ITEMS), RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
+private_router = protected_router(
+    prefix="/items", tags=["items"], feature=Feature.ITEMS
 )
 
 
