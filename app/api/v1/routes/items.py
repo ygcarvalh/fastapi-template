@@ -32,12 +32,7 @@ async def list_items(
     items, total = await service.list_for_owner(
         current_user.id, page.limit, page.offset
     )
-    return Page(
-        items=[ItemRead.model_validate(item) for item in items],
-        total=total,
-        limit=page.limit,
-        offset=page.offset,
-    )
+    return Page.of(items, ItemRead.model_validate, total=total, params=page)
 
 
 @private_router.post("", status_code=status.HTTP_201_CREATED)

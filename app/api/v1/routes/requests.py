@@ -32,8 +32,9 @@ async def list_requests(
     scope: Annotated[Scope, require_permission(REQUEST_LOG, READ)],
 ) -> CursorPage[RequestLogRead]:
     entries, next_cursor = await service.list_for(current_user, scope, query)
-    return CursorPage(
-        items=[RequestLogRead.model_validate(entry) for entry in entries],
+    return CursorPage.of(
+        entries,
+        RequestLogRead.model_validate,
         limit=query.limit,
         next_cursor=next_cursor,
     )

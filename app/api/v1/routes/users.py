@@ -127,12 +127,7 @@ async def list_users(
     page: Annotated[PageParams, Query()],
 ) -> Page[UserRead]:
     users, total = await service.list_all(page.limit, page.offset)
-    return Page(
-        items=[UserRead.model_validate(user) for user in users],
-        total=total,
-        limit=page.limit,
-        offset=page.offset,
-    )
+    return Page.of(users, UserRead.model_validate, total=total, params=page)
 
 
 @private_router.get("/{user_id}", dependencies=[require_permission(USERS, READ)])

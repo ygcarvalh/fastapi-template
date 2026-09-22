@@ -31,8 +31,9 @@ async def list_audit_entries(
     scope: Annotated[Scope, require_permission(AUDIT_LOG, READ)],
 ) -> CursorPage[AuditLogRead]:
     entries, next_cursor = await service.list_for(current_user, scope, query)
-    return CursorPage(
-        items=[AuditLogRead.model_validate(entry) for entry in entries],
+    return CursorPage.of(
+        entries,
+        AuditLogRead.model_validate,
         limit=query.limit,
         next_cursor=next_cursor,
     )

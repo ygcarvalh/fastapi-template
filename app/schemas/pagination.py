@@ -2,7 +2,7 @@ import base64
 import binascii
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import Annotated, Protocol
+from typing import Annotated, Any, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -55,6 +55,22 @@ class Page[ItemT](BaseModel):
     limit: int
     offset: int
 
+    @classmethod
+    def of(
+        cls,
+        rows: Sequence[Any],
+        mapper: Callable[[Any], ItemT],
+        *,
+        total: int,
+        params: PageParams,
+    ) -> "Page[ItemT]":
+        return cls(
+            items=[mapper(row) for row in rows],
+            total=total,
+            limit=params.limit,
+            offset=params.offset,
+        )
+
 
 class CursorPage[ItemT](BaseModel):
     """A page that does not know how many rows exist.
@@ -66,3 +82,18 @@ class CursorPage[ItemT](BaseModel):
     items: list[ItemT]
     limit: int
     next_cursor: str | None = None
+
+    @classmethod
+    def of(
+        cls,
+        rows: Sequence[Any],
+        mapper: Callable[[Any], ItemT],
+        *,
+        limit: int,
+        next_cursor: str | None,
+    ) -> "CursorPage[ItemT]":
+        return cls(
+            items=[mapper(row) for row in rows],
+            limit=limit,
+            next_cursor=next_cursor,
+        )
