@@ -6,6 +6,7 @@ from datetime import timedelta
 from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from starlette.datastructures import State
 
 from app.api.idempotency_store import DatabaseIdempotencyStore, caller_of
 from app.api.request_recorder import store_request
@@ -36,18 +37,28 @@ from app.schemas.error import COMMON_ERROR_RESPONSES
 logger = logging.getLogger(__name__)
 
 
+class AppState(State):
+    scheduler: Scheduler | None
+
+
+class Application(FastAPI):
+    state: AppState
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    scheduler: Scheduler | None = getattr(app.state, "scheduler", None)
+async def lifespan(app: Application) -> AsyncGenerator[None]:
+    scheduler = app.state.scheduler
     if scheduler is not None:
         await scheduler.start()
-    yield
-    if scheduler is not None:
-        await scheduler.stop()
-    await dispose_engine()
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            await scheduler.stop()
+        await dispose_engine()
 
 
-def create_app() -> FastAPI:
+def create_app() -> Application:
     settings = get_settings()
     configure_logging(
         level=settings.log_level,
@@ -55,13 +66,15 @@ def create_app() -> FastAPI:
         service_name=settings.service_name,
         log_file=settings.log_file,
     )
-    app = FastAPI(
+    app = Application(
         title="FastAPI Template",
         lifespan=lifespan,
         docs_url="/docs" if settings.docs_enabled else None,
         redoc_url="/redoc" if settings.docs_enabled else None,
         openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
+    app.state = AppState()
+    app.state.scheduler = None
     register_exception_handlers(app)
     app.add_middleware(
         IdempotencyMiddleware,
@@ -114,6 +127,3 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=status.HTTP_200_OK, content={"status": "ready"})
 
     return app
-
-
-app = create_app()
