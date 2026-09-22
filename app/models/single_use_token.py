@@ -13,7 +13,7 @@ PURPOSE_LENGTH = 30
 
 class TokenPurpose(StrEnum):
     EMAIL_VERIFICATION = "email-verification"
-    PASSWORD_RESET = "password-reset"
+    PASSWORD_RESET = "password-reset"  # noqa: S105
 
 
 class SingleUseToken(Base, CreatedAtMixin):

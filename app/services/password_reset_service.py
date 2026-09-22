@@ -13,7 +13,7 @@ from app.services.protocols import (
 )
 from app.services.single_use_tokens import SingleUseTokenIssuer, redeem
 
-INVALID_TOKEN = "This reset link is no longer valid"
+INVALID_TOKEN = "This reset link is no longer valid"  # noqa: S105
 
 
 class PasswordResetService:

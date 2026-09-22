@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PLACEHOLDER_SECRET_KEY = "change-me-in-production-to-a-random-32-byte-string"
+PLACEHOLDER_SECRET_KEY = "change-me-in-production-to-a-random-32-byte-string"  # noqa: S105
 MIN_SECRET_KEY_LENGTH = 32
 
 

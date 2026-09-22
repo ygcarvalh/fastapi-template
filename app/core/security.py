@@ -18,8 +18,8 @@ password_hash = PasswordHash((Argon2Hasher(), BcryptHasher()))
 
 TokenType = Literal["access", "refresh"]
 
-ACCESS_TOKEN_TYPE: TokenType = "access"
-REFRESH_TOKEN_TYPE: TokenType = "refresh"
+ACCESS_TOKEN_TYPE: TokenType = "access"  # noqa: S105
+REFRESH_TOKEN_TYPE: TokenType = "refresh"  # noqa: S105
 
 INVALID_CREDENTIALS = "Invalid authentication credentials"
 

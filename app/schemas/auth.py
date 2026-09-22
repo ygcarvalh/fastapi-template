@@ -10,7 +10,7 @@ SingleUseToken = Annotated[str, Field(min_length=1, max_length=200)]
 class Token(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105
 
 
 class RefreshRequest(BaseModel):
@@ -19,7 +19,7 @@ class RefreshRequest(BaseModel):
 
 class ImpersonationToken(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int
     user: UserRead
     impersonator: UserRead

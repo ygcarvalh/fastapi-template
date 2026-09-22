@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 TEMPLATE_NAME = "fastapi-template"
-SECRET_PLACEHOLDER = "change-me-in-production-to-a-random-32-byte-string"
+SECRET_PLACEHOLDER = "change-me-in-production-to-a-random-32-byte-string"  # noqa: S105
 NAME_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,48}[a-z0-9]$")
 SECRET_KEY_BYTES = 32
 

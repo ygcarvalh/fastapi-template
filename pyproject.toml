@@ -88,19 +88,6 @@ select = [
 "app/api/v1/routes/users.py" = ["ARG001"]
 "app/core/audit/listeners.py" = ["ARG001"]
 "app/core/http/rate_limit.py" = ["ARG001"]
-# These are error-code / token-type constant *names*, not secrets; bandit's
-# S105 flags any string assigned to a name containing "password"/"token"/
-# "secret". Fixing means renaming or annotating in app/, out of scope here.
-"app/core/config.py" = ["S105"]
-"app/core/error_codes.py" = ["S105"]
-"app/core/mail/templates.py" = ["S105"]
-"app/core/security.py" = ["S105"]
-"app/db/demo.py" = ["S105"]
-"app/models/single_use_token.py" = ["S105"]
-"app/schemas/auth.py" = ["S105"]
-"app/services/email_verification_service.py" = ["S105"]
-"app/services/password_reset_service.py" = ["S105"]
-"scripts/bootstrap.py" = ["S105"]
 
 [tool.mypy]
 python_version = "3.13"

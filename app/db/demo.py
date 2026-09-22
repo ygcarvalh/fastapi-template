@@ -16,7 +16,7 @@ from app.models.role import Role
 from app.models.user import User, UserRole
 from app.models.user_preferences import UserPreferences
 
-DEMO_PASSWORD = "Change!123"
+DEMO_PASSWORD = "Change!123"  # noqa: S105
 
 
 @dataclass
