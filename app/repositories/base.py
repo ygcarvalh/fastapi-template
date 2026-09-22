@@ -6,6 +6,8 @@ from sqlalchemy import CursorResult, Executable, Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from app.db.mixins import SoftDeleteMixin
+
 DELETE_BATCH_SIZE = 5000
 
 
@@ -74,3 +76,25 @@ class BaseRepository:
         return await self._affected(
             delete(identifier.class_).where(identifier.in_(doomed))
         )
+
+
+class CrudRepository[ModelT](BaseRepository):
+    _model: type[ModelT]
+
+    async def get(self, entity_id: Any) -> ModelT | None:
+        return await self._session.get(self._model, entity_id)
+
+    async def create(self, entity: ModelT) -> ModelT:
+        return await self._insert_refreshed(entity)
+
+    async def save(self, entity: ModelT) -> ModelT:
+        return await self._save(entity)
+
+    async def delete(self, entity: ModelT) -> None:
+        await self._remove(entity)
+
+
+class SoftDeleteRepository[ModelT: SoftDeleteMixin](BaseRepository):
+    async def soft_delete(self, entity: ModelT) -> None:
+        entity.mark_deleted()
+        await self._flush()

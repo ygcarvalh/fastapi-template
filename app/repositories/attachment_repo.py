@@ -4,12 +4,11 @@ from sqlalchemy import select
 
 from app.models.attachment import Attachment
 from app.models.item import Item
-from app.repositories.base import BaseRepository
+from app.repositories.base import CrudRepository
 
 
-class AttachmentRepository(BaseRepository):
-    async def create(self, attachment: Attachment) -> Attachment:
-        return await self._insert_refreshed(attachment)
+class AttachmentRepository(CrudRepository[Attachment]):
+    _model = Attachment
 
     async def list_for_item(self, item_id: int) -> Sequence[Attachment]:
         return await self._all(
@@ -30,6 +29,3 @@ class AttachmentRepository(BaseRepository):
                 Item.is_active(),
             )
         )
-
-    async def delete(self, attachment: Attachment) -> None:
-        await self._remove(attachment)
