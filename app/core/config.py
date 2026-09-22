@@ -13,6 +13,11 @@ class Settings(BaseSettings):
 
     database_url: str
     test_database_url: str | None = None
+    # pool_size + max_overflow, multiplied by the number of worker processes,
+    # must stay under PostgreSQL's max_connections.
+    db_pool_size: Annotated[int, Field(gt=0)] = 5
+    db_max_overflow: Annotated[int, Field(gt=0)] = 10
+    db_pool_recycle: Annotated[int, Field(gt=0)] = 1800
     secret_key: Annotated[str, Field(min_length=MIN_SECRET_KEY_LENGTH)]
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = 30
