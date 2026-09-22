@@ -22,6 +22,8 @@ class Attachment(Base, TimestampMixin):
     filename: Mapped[str] = mapped_column(String(FILENAME_LENGTH))
     content_type: Mapped[str] = mapped_column(String(CONTENT_TYPE_LENGTH))
     size_bytes: Mapped[int] = mapped_column(Integer)
-    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), index=True)
+    item_id: Mapped[int] = mapped_column(
+        ForeignKey("items.id", ondelete="CASCADE"), index=True
+    )
 
     item: Mapped["Item"] = relationship(back_populates="attachments")

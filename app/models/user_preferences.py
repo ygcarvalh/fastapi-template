@@ -19,7 +19,7 @@ class UserPreferences(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"), unique=True, index=True
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
     )
     locale: Mapped[str] = mapped_column(
         String(LOCALE_LENGTH), default=DEFAULT_LOCALE, server_default=DEFAULT_LOCALE
