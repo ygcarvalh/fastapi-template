@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from functools import lru_cache
 from typing import Annotated
 
 import structlog
@@ -50,7 +49,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-@lru_cache(maxsize=1)
 def get_mail_sender() -> MailSender:
     settings = get_settings()
     if settings.mail_backend == "smtp":
@@ -143,7 +141,6 @@ def get_role_service(session: SessionDep) -> RoleService:
 RoleServiceDep = Annotated[RoleService, Depends(get_role_service)]
 
 
-@lru_cache(maxsize=1)
 def get_storage() -> Storage:
     return LocalStorage(get_settings().storage_root)
 
