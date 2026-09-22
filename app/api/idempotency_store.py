@@ -30,6 +30,8 @@ def caller_of(request: Request) -> int | None:
         return None
 
 
+# Only construction site for IdempotencyService, unlike PasswordResetService/
+# RequestLogService — no drift risk to guard against, so no build_* split.
 def _service(session: AsyncSession) -> IdempotencyService:
     return IdempotencyService(
         IdempotencyRepository(session),

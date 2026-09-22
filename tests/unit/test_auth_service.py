@@ -27,8 +27,8 @@ EMAIL = "someone@example.com"
 PASSWORD = "the-correct-password"
 
 
-def _registered_user() -> User:
-    user = User(email=EMAIL, hashed_password=hash_password(PASSWORD))
+async def _registered_user() -> User:
+    user = User(email=EMAIL, hashed_password=await hash_password(PASSWORD))
     user.id = 7
     return user
 
@@ -50,7 +50,7 @@ async def _time_rejected_login(users: Sequence[User]) -> tuple[float, str]:
 
 
 async def test_authenticate_returns_a_token_pair_for_the_right_password() -> None:
-    service = _service([_registered_user()])
+    service = _service([await _registered_user()])
 
     pair = await service.authenticate(EMAIL, PASSWORD)
 
@@ -59,7 +59,7 @@ async def test_authenticate_returns_a_token_pair_for_the_right_password() -> Non
 
 
 async def test_a_stored_refresh_token_buys_a_new_access_token() -> None:
-    service = _service([_registered_user()])
+    service = _service([await _registered_user()])
     issued = await service.authenticate(EMAIL, PASSWORD)
 
     refreshed = await service.refresh(issued.refresh_token)
@@ -69,14 +69,14 @@ async def test_a_stored_refresh_token_buys_a_new_access_token() -> None:
 
 
 async def test_a_refresh_token_nobody_issued_is_refused() -> None:
-    service = _service([_registered_user()])
+    service = _service([await _registered_user()])
 
     with pytest.raises(AuthError):
         await service.refresh(create_refresh_token("7"))
 
 
 async def test_signing_out_retires_the_refresh_token() -> None:
-    service = _service([_registered_user()])
+    service = _service([await _registered_user()])
     issued = await service.authenticate(EMAIL, PASSWORD)
 
     await service.logout(issued.refresh_token)
@@ -86,7 +86,7 @@ async def test_signing_out_retires_the_refresh_token() -> None:
 
 
 async def test_signing_out_twice_is_harmless() -> None:
-    service = _service([_registered_user()])
+    service = _service([await _registered_user()])
     issued = await service.authenticate(EMAIL, PASSWORD)
 
     await service.logout(issued.refresh_token)
@@ -94,7 +94,7 @@ async def test_signing_out_twice_is_harmless() -> None:
 
 
 async def test_revoking_sessions_closes_every_token_at_once() -> None:
-    user = _registered_user()
+    user = await _registered_user()
     service = _service([user])
     first = await service.authenticate(EMAIL, PASSWORD)
     second = await service.authenticate(EMAIL, PASSWORD)
@@ -108,7 +108,7 @@ async def test_revoking_sessions_closes_every_token_at_once() -> None:
 
 
 async def test_a_token_stored_against_another_account_is_refused() -> None:
-    user = _registered_user()
+    user = await _registered_user()
     tokens = FakeRefreshTokenRepository()
     service = AuthService(FakeUserRepository([user]), tokens, FakeAuditLogRepository())
     issued = await service.authenticate(EMAIL, PASSWORD)
@@ -121,7 +121,7 @@ async def test_a_token_stored_against_another_account_is_refused() -> None:
 
 
 async def test_refresh_rejects_a_non_numeric_subject() -> None:
-    service = _service([_registered_user()])
+    service = _service([await _registered_user()])
 
     with pytest.raises(AuthError):
         await service.refresh(create_refresh_token("not-a-user-id"))
@@ -131,7 +131,9 @@ async def test_refresh_rejects_a_subject_with_no_matching_user() -> None:
     users = FakeUserRepository()
     tokens = FakeRefreshTokenRepository()
     service = AuthService(users, tokens, FakeAuditLogRepository())
-    ghost = User(email="ghost@example.com", hashed_password=hash_password(PASSWORD))
+    ghost = User(
+        email="ghost@example.com", hashed_password=await hash_password(PASSWORD)
+    )
     ghost.id = 404
     issued = await AuthService(
         FakeUserRepository([ghost]), tokens, FakeAuditLogRepository()
@@ -143,20 +145,20 @@ async def test_refresh_rejects_a_subject_with_no_matching_user() -> None:
 
 async def test_absent_user_login_costs_as_much_as_wrong_password() -> None:
     absent_duration, _ = await _time_rejected_login([])
-    present_duration, _ = await _time_rejected_login([_registered_user()])
+    present_duration, _ = await _time_rejected_login([await _registered_user()])
 
     assert absent_duration >= present_duration * 0.5
 
 
 async def test_absent_user_and_wrong_password_are_indistinguishable() -> None:
     _, absent_detail = await _time_rejected_login([])
-    _, present_detail = await _time_rejected_login([_registered_user()])
+    _, present_detail = await _time_rejected_login([await _registered_user()])
 
     assert absent_detail == present_detail
 
 
 async def test_changing_the_password_rehashes_and_signs_every_device_out() -> None:
-    user = _registered_user()
+    user = await _registered_user()
     service = _service([user])
     pair = await service.authenticate(EMAIL, PASSWORD)
 
@@ -164,13 +166,13 @@ async def test_changing_the_password_rehashes_and_signs_every_device_out() -> No
         user, PasswordChange(current_password=PASSWORD, new_password="another-one")
     )
 
-    assert verify_password("another-one", user.hashed_password)
+    assert await verify_password("another-one", user.hashed_password)
     with pytest.raises(AuthError):
         await service.refresh(pair.refresh_token)
 
 
 async def test_changing_the_password_needs_the_current_one() -> None:
-    user = _registered_user()
+    user = await _registered_user()
     service = _service([user])
     pair = await service.authenticate(EMAIL, PASSWORD)
 
@@ -180,7 +182,7 @@ async def test_changing_the_password_needs_the_current_one() -> None:
             PasswordChange(current_password="not-it", new_password="another-one"),
         )
 
-    assert verify_password(PASSWORD, user.hashed_password)
+    assert await verify_password(PASSWORD, user.hashed_password)
     assert await service.refresh(pair.refresh_token)
 
 
@@ -194,7 +196,7 @@ def _strict_service(users: Sequence[User]) -> AuthService:
 
 
 async def test_an_unconfirmed_address_cannot_sign_in_where_that_is_required() -> None:
-    service = _strict_service([_registered_user()])
+    service = _strict_service([await _registered_user()])
 
     with pytest.raises(AuthError) as raised:
         await service.authenticate(EMAIL, PASSWORD)
@@ -203,7 +205,7 @@ async def test_an_unconfirmed_address_cannot_sign_in_where_that_is_required() ->
 
 
 async def test_a_confirmed_address_signs_in_where_that_is_required() -> None:
-    user = _registered_user()
+    user = await _registered_user()
     user.email_verified_at = NOW
     service = _strict_service([user])
 
@@ -213,7 +215,7 @@ async def test_a_confirmed_address_signs_in_where_that_is_required() -> None:
 
 
 async def test_a_wrong_password_is_refused_before_the_address_is_checked() -> None:
-    service = _strict_service([_registered_user()])
+    service = _strict_service([await _registered_user()])
 
     with pytest.raises(AuthError) as raised:
         await service.authenticate(EMAIL, "wrong")
@@ -222,13 +224,13 @@ async def test_a_wrong_password_is_refused_before_the_address_is_checked() -> No
 
 
 async def test_an_unconfirmed_address_signs_in_where_that_is_not_required() -> None:
-    service = _service([_registered_user()])
+    service = _service([await _registered_user()])
 
     assert await service.authenticate(EMAIL, PASSWORD)
 
 
 async def test_changing_a_password_stamps_when_it_happened() -> None:
-    user = _registered_user()
+    user = await _registered_user()
     service = _service([user])
 
     await service.change_password(

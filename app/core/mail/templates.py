@@ -10,7 +10,7 @@ class Template:
 
 
 VERIFY_EMAIL = "verify-email"
-RESET_PASSWORD = "reset-password"
+RESET_PASSWORD = "reset-password"  # noqa: S105
 
 TEMPLATES: dict[str, dict[Locale, Template]] = {
     VERIFY_EMAIL: {

@@ -1,6 +1,6 @@
-from collections.abc import Awaitable, Callable
-
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 HSTS_MAX_AGE_SECONDS = 31_536_000
 
@@ -11,18 +11,33 @@ STATIC_SECURITY_HEADERS = {
     "Cache-Control": "no-store",
 }
 
-CallNext = Callable[[Request], Awaitable[Response]]
+
+class SecurityHeadersMiddleware:
+    def __init__(self, app: ASGIApp, *, hsts_enabled: bool) -> None:
+        self._app = app
+        self._hsts_enabled = hsts_enabled
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        await self._app(scope, receive, self._wrapped(send))
+
+    def _wrapped(self, send: Send) -> Send:
+        async def wrapped_send(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(raw=message["headers"])
+                for header, value in STATIC_SECURITY_HEADERS.items():
+                    headers.setdefault(header, value)
+                if self._hsts_enabled:
+                    headers.setdefault(
+                        "Strict-Transport-Security",
+                        f"max-age={HSTS_MAX_AGE_SECONDS}; includeSubDomains",
+                    )
+            await send(message)
+
+        return wrapped_send
 
 
 def register_security_headers(app: FastAPI, *, hsts_enabled: bool) -> None:
-    @app.middleware("http")
-    async def add_security_headers(request: Request, call_next: CallNext) -> Response:
-        response = await call_next(request)
-        for header, value in STATIC_SECURITY_HEADERS.items():
-            response.headers.setdefault(header, value)
-        if hsts_enabled:
-            response.headers.setdefault(
-                "Strict-Transport-Security",
-                f"max-age={HSTS_MAX_AGE_SECONDS}; includeSubDomains",
-            )
-        return response
+    app.add_middleware(SecurityHeadersMiddleware, hsts_enabled=hsts_enabled)

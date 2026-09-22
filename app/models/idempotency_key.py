@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.mixins import CreatedAtMixin
 
 KEY_LENGTH = 255
 METHOD_LENGTH = 10
@@ -12,10 +13,11 @@ HASH_LENGTH = 64
 CONTENT_TYPE_LENGTH = 100
 
 
-class IdempotencyKey(Base):
+class IdempotencyKey(Base, CreatedAtMixin):
     __tablename__ = "idempotency_keys"
     __table_args__ = (
         UniqueConstraint("user_id", "key", name="uq_idempotency_keys_user_id_key"),
+        Index("ix_idempotency_keys_created_at", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -31,7 +33,4 @@ class IdempotencyKey(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
     )

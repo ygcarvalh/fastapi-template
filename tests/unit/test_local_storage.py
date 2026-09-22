@@ -1,5 +1,7 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
+from typing import IO, cast
+from unittest import mock
 
 import pytest
 
@@ -62,3 +64,23 @@ async def test_the_root_is_created_on_the_first_write(tmp_path: Path) -> None:
     await storage.save("key-1", _chunks(b"data"))
 
     assert (tmp_path / "uploads" / "key-1").read_bytes() == b"data"
+
+
+async def test_a_partial_read_still_closes_the_handle(tmp_path: Path) -> None:
+    storage = LocalStorage(tmp_path)
+    await storage.save("key-1", _chunks(b"hello ", b"world"))
+    opened_handles: list[IO[bytes]] = []
+    original_open = Path.open
+
+    def tracking_open(path: Path, mode: str = "r") -> IO[bytes]:
+        handle = cast(IO[bytes], original_open(path, mode))
+        opened_handles.append(handle)
+        return handle
+
+    with mock.patch.object(Path, "open", tracking_open):
+        stream = cast(AsyncGenerator[bytes], storage.open("key-1"))
+        await stream.__anext__()
+        await stream.aclose()
+
+    assert len(opened_handles) == 1
+    assert opened_handles[0].closed

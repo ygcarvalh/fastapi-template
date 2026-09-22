@@ -1,10 +1,10 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PLACEHOLDER_SECRET_KEY = "change-me-in-production-to-a-random-32-byte-string"
+PLACEHOLDER_SECRET_KEY = "change-me-in-production-to-a-random-32-byte-string"  # noqa: S105
 MIN_SECRET_KEY_LENGTH = 32
 
 
@@ -13,16 +13,22 @@ class Settings(BaseSettings):
 
     database_url: str
     test_database_url: str | None = None
-    secret_key: Annotated[str, Field(min_length=MIN_SECRET_KEY_LENGTH)]
+    # pool_size + max_overflow, multiplied by the number of worker processes,
+    # must stay under PostgreSQL's max_connections.
+    db_pool_size: Annotated[int, Field(gt=0)] = 5
+    db_max_overflow: Annotated[int, Field(gt=0)] = 10
+    db_pool_recycle: Annotated[int, Field(gt=0)] = 1800
+    secret_key: Annotated[SecretStr, Field(min_length=MIN_SECRET_KEY_LENGTH)]
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     impersonation_token_expire_minutes: int = 30
 
-    docs_enabled: bool = True
+    environment: Literal["development", "staging", "production"] = "development"
+    docs_enabled: bool | None = None
     cors_origins: str = ""
     max_request_body_bytes: Annotated[int, Field(gt=0)] = 8 * 1024 * 1024
-    hsts_enabled: bool = False
+    hsts_enabled: bool | None = None
     rate_limit_storage_uri: str = ""
     login_rate_limit: str = "10/minute"
     register_rate_limit: str = "5/minute"
@@ -47,6 +53,7 @@ class Settings(BaseSettings):
     idempotency_in_flight_timeout_seconds: Annotated[int, Field(gt=0)] = 60
 
     app_base_url: str = "http://localhost:4200"
+    storage_backend: Literal["local"] = "local"
     storage_root: str = "var/uploads"
     max_attachment_bytes: Annotated[int, Field(gt=0)] = 5 * 1024 * 1024
     attachment_content_types: str = (
@@ -57,7 +64,7 @@ class Settings(BaseSettings):
     smtp_host: str = "localhost"
     smtp_port: Annotated[int, Field(gt=0, le=65535)] = 587
     smtp_username: str | None = None
-    smtp_password: str | None = None
+    smtp_password: SecretStr | None = None
     smtp_starttls: bool = True
     email_verification_expire_hours: Annotated[int, Field(gt=0)] = 48
     mail_resend_cooldown_seconds: Annotated[int, Field(ge=0)] = 60
@@ -78,6 +85,18 @@ class Settings(BaseSettings):
         return [
             origin.strip() for origin in self.cors_origins.split(",") if origin.strip()
         ]
+
+    @property
+    def docs_are_enabled(self) -> bool:
+        if self.docs_enabled is not None:
+            return self.docs_enabled
+        return self.environment != "production"
+
+    @property
+    def hsts_is_enabled(self) -> bool:
+        if self.hsts_enabled is not None:
+            return self.hsts_enabled
+        return self.environment == "production"
 
     @field_validator("cors_origins")
     @classmethod
@@ -101,8 +120,8 @@ class Settings(BaseSettings):
 
     @field_validator("secret_key")
     @classmethod
-    def reject_placeholder_secret_key(cls, value: str) -> str:
-        if value == PLACEHOLDER_SECRET_KEY:
+    def reject_placeholder_secret_key(cls, value: SecretStr) -> SecretStr:
+        if value.get_secret_value() == PLACEHOLDER_SECRET_KEY:
             raise ValueError(
                 "SECRET_KEY is still the .env.example placeholder; "
                 "generate a real one with: openssl rand -hex 32"

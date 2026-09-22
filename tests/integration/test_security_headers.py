@@ -2,7 +2,9 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import get_settings
-from app.main import app, create_app
+from app.main import create_app
+
+app = create_app()
 
 
 async def test_responses_carry_hardening_headers() -> None:

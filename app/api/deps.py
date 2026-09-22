@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from functools import lru_cache
 from typing import Annotated
 
 import structlog
@@ -50,7 +49,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-@lru_cache(maxsize=1)
 def get_mail_sender() -> MailSender:
     settings = get_settings()
     if settings.mail_backend == "smtp":
@@ -59,7 +57,9 @@ def get_mail_sender() -> MailSender:
             host=settings.smtp_host,
             port=settings.smtp_port,
             username=settings.smtp_username,
-            password=settings.smtp_password,
+            password=settings.smtp_password.get_secret_value()
+            if settings.smtp_password is not None
+            else None,
             use_starttls=settings.smtp_starttls,
         )
     return LoggingMailSender(settings.mail_from)
@@ -100,15 +100,20 @@ EmailVerificationServiceDep = Annotated[
 ]
 
 
-def get_password_reset_service(session: SessionDep) -> PasswordResetService:
+def build_password_reset_service(session: AsyncSession) -> PasswordResetService:
+    settings = get_settings()
     return PasswordResetService(
         UserRepository(session),
         SingleUseTokenRepository(session),
         RefreshTokenRepository(session),
         get_account_mailer(session),
-        lifetime=timedelta(minutes=get_settings().password_reset_expire_minutes),
-        resend_cooldown=timedelta(seconds=get_settings().mail_resend_cooldown_seconds),
+        lifetime=timedelta(minutes=settings.password_reset_expire_minutes),
+        resend_cooldown=timedelta(seconds=settings.mail_resend_cooldown_seconds),
     )
+
+
+def get_password_reset_service(session: SessionDep) -> PasswordResetService:
+    return build_password_reset_service(session)
 
 
 PasswordResetServiceDep = Annotated[
@@ -136,9 +141,11 @@ def get_role_service(session: SessionDep) -> RoleService:
 RoleServiceDep = Annotated[RoleService, Depends(get_role_service)]
 
 
-@lru_cache(maxsize=1)
 def get_storage() -> Storage:
-    return LocalStorage(get_settings().storage_root)
+    settings = get_settings()
+    if settings.storage_backend == "local":
+        return LocalStorage(settings.storage_root)
+    raise ValueError(f"unknown storage backend: {settings.storage_backend}")
 
 
 def get_attachment_service(session: SessionDep) -> AttachmentService:
@@ -147,6 +154,7 @@ def get_attachment_service(session: SessionDep) -> AttachmentService:
         AttachmentRepository(session),
         ItemRepository(session),
         get_storage(),
+        session,
         max_bytes=settings.max_attachment_bytes,
         allowed_types=settings.attachment_type_set,
     )
@@ -162,8 +170,12 @@ def get_item_service(session: SessionDep) -> ItemService:
 ItemServiceDep = Annotated[ItemService, Depends(get_item_service)]
 
 
-def get_request_log_service(session: SessionDep) -> RequestLogService:
+def build_request_log_service(session: AsyncSession) -> RequestLogService:
     return RequestLogService(RequestLogRepository(session))
+
+
+def get_request_log_service(session: SessionDep) -> RequestLogService:
+    return build_request_log_service(session)
 
 
 RequestLogServiceDep = Annotated[RequestLogService, Depends(get_request_log_service)]
@@ -177,7 +189,7 @@ AuditLogServiceDep = Annotated[AuditLogService, Depends(get_audit_log_service)]
 
 
 def get_preferences_service(session: SessionDep) -> PreferencesService:
-    return PreferencesService(PreferencesRepository(session))
+    return PreferencesService(PreferencesRepository(session), UserRepository(session))
 
 
 PreferencesServiceDep = Annotated[PreferencesService, Depends(get_preferences_service)]

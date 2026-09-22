@@ -15,7 +15,11 @@ from app.core.security import (
 
 def _token_with(payload: dict[str, object]) -> str:
     settings = get_settings()
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        payload,
+        settings.secret_key.get_secret_value(),
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def test_refresh_token_round_trips() -> None:
@@ -67,12 +71,12 @@ def test_refresh_tokens_outlive_access_tokens() -> None:
     settings = get_settings()
     access = jwt.decode(
         create_access_token("42"),
-        settings.secret_key,
+        settings.secret_key.get_secret_value(),
         algorithms=[settings.jwt_algorithm],
     )
     refresh = jwt.decode(
         create_refresh_token("42"),
-        settings.secret_key,
+        settings.secret_key.get_secret_value(),
         algorithms=[settings.jwt_algorithm],
     )
 

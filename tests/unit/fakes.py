@@ -1,7 +1,9 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from typing import Protocol
 
 from app.core.authorization import BASE_ROLES
+from app.core.constants import DELETE_BATCH_SIZE
 from app.models.audit_log import AuditLog
 from app.models.idempotency_key import IdempotencyKey
 from app.models.item import Item
@@ -14,6 +16,36 @@ from app.models.user_preferences import UserPreferences
 from app.schemas.audit_log import AuditLogQuery
 from app.schemas.pagination import decode_cursor
 from app.schemas.request_log import RequestLogQuery, outcome_for
+
+
+class _HasId(Protocol):
+    id: int
+
+
+def apply_cursor[EntryT: _HasId](
+    entries: list[EntryT], moment_of: Callable[[EntryT], datetime], cursor: str | None
+) -> list[EntryT]:
+    if cursor is None:
+        return entries
+    moment, entry_id = decode_cursor(cursor)
+    return [e for e in entries if (moment_of(e), e.id) < (moment, entry_id)]
+
+
+def newest_first[EntryT: _HasId](
+    entries: list[EntryT], moment_of: Callable[[EntryT], datetime]
+) -> list[EntryT]:
+    return sorted(entries, key=lambda e: (moment_of(e), e.id), reverse=True)
+
+
+def prune_before[EntryT: _HasId](
+    entries: list[EntryT],
+    moment_of: Callable[[EntryT], datetime],
+    cutoff: datetime,
+    batch_size: int,
+) -> tuple[list[EntryT], int]:
+    doomed = [e for e in entries if moment_of(e) < cutoff][:batch_size]
+    remaining = [e for e in entries if e not in doomed]
+    return remaining, len(doomed)
 
 
 class FakeUserRepository:
@@ -212,16 +244,8 @@ class FakeRequestLogRepository:
             entries = [entry for entry in entries if entry.created_at >= query.since]
         if query.until is not None:
             entries = [entry for entry in entries if entry.created_at <= query.until]
-        if query.cursor is not None:
-            moment, entry_id = decode_cursor(query.cursor)
-            entries = [
-                entry
-                for entry in entries
-                if (entry.created_at, entry.id) < (moment, entry_id)
-            ]
-        return sorted(
-            entries, key=lambda entry: (entry.created_at, entry.id), reverse=True
-        )
+        entries = apply_cursor(entries, lambda entry: entry.created_at, query.cursor)
+        return newest_first(entries, lambda entry: entry.created_at)
 
     async def create(self, entry: RequestLog) -> RequestLog:
         entry.id = len(self._entries) + 1
@@ -232,14 +256,13 @@ class FakeRequestLogRepository:
         return self._matching(query)[: query.limit + 1]
 
     async def delete_batch_created_before(
-        self, cutoff: datetime, batch_size: int
+        self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int:
-        doomed = [entry for entry in self._entries if entry.created_at < cutoff][
-            :batch_size
-        ]
-        self._entries = [entry for entry in self._entries if entry not in doomed]
+        self._entries, deleted = prune_before(
+            self._entries, lambda entry: entry.created_at, cutoff, batch_size
+        )
         self.pruned.append(cutoff)
-        return len(doomed)
+        return deleted
 
 
 class FakeAuditLogRepository:
@@ -273,16 +296,8 @@ class FakeAuditLogRepository:
             entries = [entry for entry in entries if entry.occurred_at >= query.since]
         if query.until is not None:
             entries = [entry for entry in entries if entry.occurred_at <= query.until]
-        if query.cursor is not None:
-            moment, entry_id = decode_cursor(query.cursor)
-            entries = [
-                entry
-                for entry in entries
-                if (entry.occurred_at, entry.id) < (moment, entry_id)
-            ]
-        return sorted(
-            entries, key=lambda entry: (entry.occurred_at, entry.id), reverse=True
-        )
+        entries = apply_cursor(entries, lambda entry: entry.occurred_at, query.cursor)
+        return newest_first(entries, lambda entry: entry.occurred_at)
 
     async def create(self, entry: AuditLog) -> AuditLog:
         entry.id = len(self._entries) + 1
@@ -296,14 +311,13 @@ class FakeAuditLogRepository:
         return next((entry for entry in self._entries if entry.id == entry_id), None)
 
     async def delete_batch_occurred_before(
-        self, cutoff: datetime, batch_size: int
+        self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int:
-        doomed = [entry for entry in self._entries if entry.occurred_at < cutoff][
-            :batch_size
-        ]
-        self._entries = [entry for entry in self._entries if entry not in doomed]
+        self._entries, deleted = prune_before(
+            self._entries, lambda entry: entry.occurred_at, cutoff, batch_size
+        )
         self.pruned.append(cutoff)
-        return len(doomed)
+        return deleted
 
 
 class FakePreferencesRepository:

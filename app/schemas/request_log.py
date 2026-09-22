@@ -1,19 +1,12 @@
 from datetime import datetime
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal
 
-from pydantic import (
-    AwareDatetime,
-    BaseModel,
-    ConfigDict,
-    Field,
-    computed_field,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, Field, computed_field
 
 from app.core.observability.request_context import REQUEST_ID_REGEX
 from app.models.request_log import PATH_LENGTH
-from app.schemas.pagination import CURSOR_REGEX, decode_cursor
+from app.schemas.base import ORMModel
+from app.schemas.pagination import CursorQuery
 
 Outcome = Literal["success", "warning", "error"]
 
@@ -29,9 +22,7 @@ def outcome_for(status_code: int) -> Outcome:
     return "success"
 
 
-class RequestLogRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+class RequestLogRead(ORMModel):
     id: int
     request_id: str
     method: str
@@ -51,34 +42,13 @@ class RequestLogRead(BaseModel):
 
 # One model, because FastAPI explodes a single Pydantic model into query
 # parameters per handler and a second one arrives as a scalar.
-class RequestLogQuery(BaseModel):
-    limit: Annotated[int, Field(ge=1, le=100)] = 20
-    cursor: Annotated[str, Field(pattern=CURSOR_REGEX)] | None = None
+class RequestLogQuery(CursorQuery):
     outcome: Outcome | None = None
     method: Annotated[str, Field(pattern=r"^[A-Z]{3,10}$")] | None = None
     # A prefix, not a substring: a leading wildcard cannot use the index.
     path: Annotated[str, Field(max_length=PATH_LENGTH)] | None = None
     request_id: Annotated[str, Field(pattern=REQUEST_ID_REGEX)] | None = None
     user_id: int | None = None
-    since: AwareDatetime | None = None
-    until: AwareDatetime | None = None
-
-    @field_validator("cursor")
-    @classmethod
-    def reject_a_cursor_we_did_not_issue(cls, value: str | None) -> str | None:
-        if value is not None:
-            decode_cursor(value)
-        return value
-
-    @model_validator(mode="after")
-    def reject_an_inverted_window(self) -> Self:
-        if (
-            self.since is not None
-            and self.until is not None
-            and self.since > self.until
-        ):
-            raise ValueError("since must not be later than until")
-        return self
 
 
 class RequestRecord(BaseModel):

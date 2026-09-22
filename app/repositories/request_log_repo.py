@@ -1,11 +1,12 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, select, tuple_
+from sqlalchemy import ColumnElement, select
 
+from app.core.constants import DELETE_BATCH_SIZE
 from app.models.request_log import RequestLog
-from app.repositories.base import DELETE_BATCH_SIZE, BaseRepository
-from app.schemas.pagination import decode_cursor
+from app.repositories.base import BaseRepository
+from app.repositories.cursor import cursor_condition
 from app.schemas.request_log import (
     CLIENT_ERROR_STATUS,
     SERVER_ERROR_STATUS,
@@ -38,13 +39,11 @@ def _where(query: RequestLogQuery) -> list[ColumnElement[bool]]:
         conditions.append(RequestLog.created_at >= query.since)
     if query.until is not None:
         conditions.append(RequestLog.created_at <= query.until)
-    if query.cursor is not None:
-        moment, entry_id = decode_cursor(query.cursor)
-        # A row comparison, so PostgreSQL can walk the (created_at, id) order
-        # instead of counting past rows the way an offset makes it.
-        conditions.append(
-            tuple_(RequestLog.created_at, RequestLog.id) < (moment, entry_id)
-        )
+    # A row comparison, so PostgreSQL can walk the (created_at, id) order
+    # instead of counting past rows the way an offset makes it.
+    condition = cursor_condition(RequestLog.created_at, RequestLog.id, query.cursor)
+    if condition is not None:
+        conditions.append(condition)
     return conditions
 
 

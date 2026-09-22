@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, field_validator
+
+from app.schemas.base import ORMModel
 
 
 class ItemCreate(BaseModel):
@@ -20,9 +22,7 @@ class ItemUpdate(BaseModel):
         return value
 
 
-class ItemRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+class ItemRead(ORMModel):
     id: int
     title: str
     description: str | None

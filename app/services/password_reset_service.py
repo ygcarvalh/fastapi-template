@@ -13,7 +13,7 @@ from app.services.protocols import (
 )
 from app.services.single_use_tokens import SingleUseTokenIssuer, redeem
 
-INVALID_TOKEN = "This reset link is no longer valid"
+INVALID_TOKEN = "This reset link is no longer valid"  # noqa: S105
 
 
 class PasswordResetService:
@@ -56,7 +56,7 @@ class PasswordResetService:
             raise AuthError(INVALID_TOKEN, code=ErrorCode.AUTH_INVALID_TOKEN)
 
         stored, user = found
-        user.hashed_password = hash_password(new_password)
+        user.hashed_password = await hash_password(new_password)
         user.password_changed_at = now
         await self._users.save(user)
         await self._tokens.mark_used(stored, now)

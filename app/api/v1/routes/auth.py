@@ -10,15 +10,14 @@ from app.api.deps import (
     EmailVerificationServiceDep,
     ForbidImpersonation,
     PasswordResetServiceDep,
-    RequireAuth,
     UserServiceDep,
     require_permission,
 )
 from app.api.mail_tasks import send_password_reset
+from app.api.v1.routing import protected_router
 from app.core.authorization import IMPERSONATE, USERS
 from app.core.config import get_settings
 from app.core.http.rate_limit import limiter
-from app.models.role import Scope
 from app.schemas.auth import (
     EmailVerificationConfirm,
     ImpersonationToken,
@@ -27,17 +26,11 @@ from app.schemas.auth import (
     RefreshRequest,
     Token,
 )
-from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.user import PasswordChange, UserRead
 from app.services.auth_service import TokenPair
 
 public_router = APIRouter(prefix="/auth", tags=["auth"])
-private_router = APIRouter(
-    prefix="/auth",
-    tags=["auth"],
-    dependencies=[RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
-)
+private_router = protected_router(prefix="/auth", tags=["auth"])
 
 
 def _as_token(pair: TokenPair) -> Token:
@@ -83,7 +76,10 @@ async def stop_impersonating(actor: CurrentActor, service: AuthServiceDep) -> No
         await service.stop_impersonating(actor.user)
 
 
-@private_router.post("/impersonate/{user_id}")
+@private_router.post(
+    "/impersonate/{user_id}",
+    dependencies=[require_permission(USERS, IMPERSONATE)],
+)
 @limiter.limit(lambda: get_settings().login_rate_limit)
 async def impersonate(
     request: Request,
@@ -91,7 +87,6 @@ async def impersonate(
     current_user: CurrentUser,
     users: UserServiceDep,
     service: AuthServiceDep,
-    scope: Annotated[Scope, require_permission(USERS, IMPERSONATE)],
 ) -> ImpersonationToken:
     target = await users.get(user_id)
     grant = await service.impersonate(current_user, target)

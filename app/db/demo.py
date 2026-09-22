@@ -16,7 +16,7 @@ from app.models.role import Role
 from app.models.user import User, UserRole
 from app.models.user_preferences import UserPreferences
 
-DEMO_PASSWORD = "Change!123"
+DEMO_PASSWORD = "Change!123"  # noqa: S105
 
 
 @dataclass
@@ -114,7 +114,7 @@ async def _role(session: AsyncSession, name: str) -> Role:
 
 async def seed_demo(session: AsyncSession, storage: Storage) -> DemoCounts:
     with audit_suppressed():
-        hashed_password = hash_password(DEMO_PASSWORD)
+        hashed_password = await hash_password(DEMO_PASSWORD)
         users = 0
         items = 0
         attachments = 0

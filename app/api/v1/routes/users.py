@@ -7,25 +7,14 @@ from app.api.deps import (
     EmailVerificationServiceDep,
     ForbidImpersonation,
     PreferencesServiceDep,
-    RequireAuth,
     RoleServiceDep,
     UserServiceDep,
     require_permission,
 )
-from app.core.authorization import (
-    DELETE,
-    FEATURE_FLAGS,
-    READ,
-    UPDATE,
-    USERS,
-    granted,
-    is_superuser,
-)
+from app.api.v1.routing import protected_router
+from app.core.authorization import DELETE, FEATURE_FLAGS, READ, UPDATE, USERS
 from app.core.config import get_settings
-from app.core.features import available_features
 from app.core.http.rate_limit import limiter
-from app.models.role import Scope
-from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import Page, PageParams
 from app.schemas.preferences import (
     AccountFeaturesRead,
@@ -33,9 +22,9 @@ from app.schemas.preferences import (
     PreferencesRead,
     PreferencesUpdate,
 )
+from app.schemas.role import GrantRead
 from app.schemas.user import (
     AccountDeactivate,
-    GrantRead,
     RoleAssignment,
     UserCreate,
     UserRead,
@@ -43,12 +32,7 @@ from app.schemas.user import (
 )
 
 public_router = APIRouter(prefix="/users", tags=["users"])
-private_router = APIRouter(
-    prefix="/users",
-    tags=["users"],
-    dependencies=[RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
-)
+private_router = protected_router(prefix="/users", tags=["users"])
 
 
 @public_router.post("", status_code=status.HTTP_201_CREATED)
@@ -106,19 +90,7 @@ async def deactivate_me(
 async def read_my_permissions(
     current_user: CurrentUser, roles: RoleServiceDep
 ) -> list[GrantRead]:
-    if is_superuser(current_user):
-        return [
-            GrantRead(
-                resource=permission.resource,
-                action=permission.action,
-                scope=Scope.ALL,
-            )
-            for permission in await roles.list_permissions()
-        ]
-    return [
-        GrantRead(resource=resource, action=action, scope=scope)
-        for resource, action, scope in granted(current_user)
-    ]
+    return await roles.effective_grants(current_user)
 
 
 @private_router.get("", dependencies=[require_permission(USERS, READ)])
@@ -127,12 +99,7 @@ async def list_users(
     page: Annotated[PageParams, Query()],
 ) -> Page[UserRead]:
     users, total = await service.list_all(page.limit, page.offset)
-    return Page(
-        items=[UserRead.model_validate(user) for user in users],
-        total=total,
-        limit=page.limit,
-        offset=page.offset,
-    )
+    return Page.of(users, UserRead.model_validate, total=total, params=page)
 
 
 @private_router.get("/{user_id}", dependencies=[require_permission(USERS, READ)])
@@ -148,10 +115,9 @@ async def read_user(user_id: int, service: UserServiceDep) -> UserRead:
     ],
 )
 async def read_user_features(
-    user_id: int, users: UserServiceDep, preferences: PreferencesServiceDep
+    user_id: int, preferences: PreferencesServiceDep
 ) -> AccountFeaturesRead:
-    stored = await preferences.get(await users.get(user_id))
-    return AccountFeaturesRead(features=stored.features, available=available_features())
+    return await preferences.features_for(user_id)
 
 
 @private_router.put(
@@ -160,12 +126,9 @@ async def read_user_features(
 async def update_user_features(
     user_id: int,
     data: AccountFeaturesUpdate,
-    users: UserServiceDep,
     preferences: PreferencesServiceDep,
 ) -> AccountFeaturesRead:
-    target = await users.get(user_id)
-    stored = await preferences.update(target, PreferencesUpdate(features=data.features))
-    return AccountFeaturesRead(features=stored.features, available=available_features())
+    return await preferences.update_features_for(user_id, data)
 
 
 @private_router.delete(

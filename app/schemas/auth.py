@@ -1,12 +1,8 @@
 from typing import Annotated
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field
 
-from app.schemas.user import (
-    Password,
-    UserRead,
-    reject_password_exceeding_bcrypt_input_limit,
-)
+from app.schemas.user import Password, UserRead
 
 SingleUseToken = Annotated[str, Field(min_length=1, max_length=200)]
 
@@ -14,7 +10,7 @@ SingleUseToken = Annotated[str, Field(min_length=1, max_length=200)]
 class Token(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105
 
 
 class RefreshRequest(BaseModel):
@@ -23,7 +19,7 @@ class RefreshRequest(BaseModel):
 
 class ImpersonationToken(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int
     user: UserRead
     impersonator: UserRead
@@ -36,11 +32,6 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: SingleUseToken
     new_password: Password
-
-    @field_validator("new_password")
-    @classmethod
-    def check_password_length_in_bytes(cls, value: str) -> str:
-        return reject_password_exceeding_bcrypt_input_limit(value)
 
 
 class EmailVerificationConfirm(BaseModel):

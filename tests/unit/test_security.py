@@ -13,11 +13,19 @@ from app.core.security import (
 )
 
 
-def test_password_hash_round_trip() -> None:
-    hashed = hash_password("secret123")
+async def test_password_hash_round_trip() -> None:
+    hashed = await hash_password("secret123")
     assert hashed != "secret123"
-    assert verify_password("secret123", hashed) is True
-    assert verify_password("wrong", hashed) is False
+    assert hashed.startswith("$argon2")
+    assert await verify_password("secret123", hashed) is True
+    assert await verify_password("wrong", hashed) is False
+
+
+async def test_a_stored_bcrypt_hash_still_verifies() -> None:
+    bcrypt_hash = "$2b$12$ZnVQVQyKJUQTw2KD9ko9iO9Vpw3OXeMhGS67G8hjaMa6siPXLO/uW"
+
+    assert await verify_password("secret123", bcrypt_hash) is True
+    assert await verify_password("wrong", bcrypt_hash) is False
 
 
 def test_access_token_round_trip() -> None:
@@ -34,7 +42,7 @@ def test_decode_token_without_a_subject_raises() -> None:
     settings = get_settings()
     token = jwt.encode(
         {"exp": datetime.now(UTC) + timedelta(minutes=5)},
-        settings.secret_key,
+        settings.secret_key.get_secret_value(),
         algorithm=settings.jwt_algorithm,
     )
 
@@ -46,7 +54,7 @@ def test_decode_expired_token_raises() -> None:
     settings = get_settings()
     token = jwt.encode(
         {"sub": "1", "exp": datetime.now(UTC) - timedelta(minutes=1)},
-        settings.secret_key,
+        settings.secret_key.get_secret_value(),
         algorithm=settings.jwt_algorithm,
     )
 

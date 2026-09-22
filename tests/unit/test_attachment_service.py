@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ForbiddenError, NotFoundError, PayloadTooLargeError
 from app.core.storage.local import LocalStorage
@@ -69,6 +70,7 @@ def _service(
         repo,
         FakeItemRepository([_owned_item()]),
         LocalStorage(tmp_path),
+        AsyncSession(),
         max_bytes=max_bytes,
         allowed_types=ALLOWED,
     )
@@ -135,15 +137,21 @@ async def test_another_account_cannot_attach_to_an_item(tmp_path: Path) -> None:
         )
 
 
-async def test_removing_an_attachment_drops_the_file_too(tmp_path: Path) -> None:
+async def test_removing_an_attachment_drops_the_file_after_commit(
+    tmp_path: Path,
+) -> None:
     service, repo = _service(tmp_path)
     stored = await service.add(
         1, OWNER_ID, Upload("notes.txt", "text/plain", _chunks(b"hello"))
     )
 
     await service.remove(stored.id, OWNER_ID)
-
     assert repo.stored == []
+    assert _stored_names(tmp_path) == [stored.key]
+
+    await service._session.commit()
+    await service.await_background_cleanup()
+
     assert _stored_names(tmp_path) == []
 
 

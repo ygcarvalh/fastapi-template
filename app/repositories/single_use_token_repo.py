@@ -3,12 +3,11 @@ from datetime import datetime
 from sqlalchemy import delete, select, update
 
 from app.models.single_use_token import SingleUseToken
-from app.repositories.base import BaseRepository
+from app.repositories.base import CrudRepository
 
 
-class SingleUseTokenRepository(BaseRepository):
-    async def create(self, token: SingleUseToken) -> SingleUseToken:
-        return await self._insert_refreshed(token)
+class SingleUseTokenRepository(CrudRepository[SingleUseToken]):
+    _model = SingleUseToken
 
     async def get_active(
         self, token_hash: str, purpose: str, now: datetime

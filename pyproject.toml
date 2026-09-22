@@ -10,8 +10,8 @@ dependencies = [
     "alembic>=1.14",
     "pydantic-settings>=2.6",
     "email-validator>=2.2",
-    "pyjwt>=2.10",
-    "pwdlib[bcrypt]>=0.3.0",
+    "pyjwt>=2.14.0",
+    "pwdlib[argon2,bcrypt]>=0.3.0",
     "slowapi>=0.1.9",
     "structlog>=25.4",
     "prometheus-fastapi-instrumentator>=7.1",
@@ -52,7 +52,42 @@ extend-exclude = ["alembic/versions"]
 force-exclude = true
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "C4", "SIM", "ASYNC", "RUF"]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
+    "ASYNC",
+    "RUF",
+    "S",
+    "PT",
+    "DTZ",
+    "PTH",
+    "RET",
+    "ARG",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Bare `assert` is pytest's normal mechanism, and fixtures/fakes routinely take
+# arguments they don't use (setup side effects, protocol conformance) or build
+# fake credentials as plain strings.
+"tests/*" = ["S101", "S105", "S106", "S107", "ARG001", "ARG002"]
+# Deferred: PT011/PT018/PT022 are real, tiny, mechanical fixes, but the files
+# they live in are outside this task's scope (tests/unit/fakes.py, pyproject.toml
+# only) — follow-up, not a rule design choice.
+"tests/unit/test_bootstrap.py" = ["PT018"]
+"tests/unit/test_local_storage.py" = ["PT011"]
+"tests/integration/test_attachment_routes.py" = ["PT022"]
+# `request`/event-listener params required by slowapi's rate limiter and
+# SQLAlchemy's event hooks even when unused; fixing means touching app/, which
+# is out of scope for this task.
+"app/api/v1/routes/auth.py" = ["ARG001"]
+"app/api/v1/routes/users.py" = ["ARG001"]
+"app/core/audit/listeners.py" = ["ARG001"]
+"app/core/http/rate_limit.py" = ["ARG001"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -60,6 +95,7 @@ strict = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+addopts = "--cov=app"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"

@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
+from app.core.constants import DELETE_BATCH_SIZE
 from app.models.attachment import Attachment
 from app.models.audit_log import AuditLog
 from app.models.idempotency_key import IdempotencyKey
@@ -120,7 +121,7 @@ class RequestLogRepositoryProtocol(Protocol):
     async def list_page(self, query: RequestLogQuery) -> Sequence[RequestLog]: ...
 
     async def delete_batch_created_before(
-        self, cutoff: datetime, batch_size: int
+        self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int: ...
 
 
@@ -132,7 +133,7 @@ class AuditLogRepositoryProtocol(Protocol):
     async def get(self, entry_id: int) -> AuditLog | None: ...
 
     async def delete_batch_occurred_before(
-        self, cutoff: datetime, batch_size: int
+        self, cutoff: datetime, batch_size: int = DELETE_BATCH_SIZE
     ) -> int: ...
 
 

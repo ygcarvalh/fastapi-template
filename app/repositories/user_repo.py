@@ -4,10 +4,12 @@ from sqlalchemy import func, select
 
 from app.models.role import user_roles
 from app.models.user import User
-from app.repositories.base import BaseRepository
+from app.repositories.base import CrudRepository, SoftDeleteRepository
 
 
-class UserRepository(BaseRepository):
+class UserRepository(CrudRepository[User], SoftDeleteRepository[User]):
+    _model = User
+
     async def get_by_email(self, email: str) -> User | None:
         return await self._one_or_none(
             select(User).where(User.email == email, User.is_active())
@@ -17,12 +19,6 @@ class UserRepository(BaseRepository):
         return await self._one_or_none(
             select(User).where(User.id == user_id, User.is_active())
         )
-
-    async def create(self, user: User) -> User:
-        return await self._insert_refreshed(user)
-
-    async def save(self, user: User) -> User:
-        return await self._save(user)
 
     async def list_all(self, limit: int, offset: int) -> Sequence[User]:
         return await self._all(
@@ -56,7 +52,3 @@ class UserRepository(BaseRepository):
 
     async def exists_any(self) -> bool:
         return await self._one(select(select(User.id).exists()))
-
-    async def soft_delete(self, user: User) -> None:
-        user.mark_deleted()
-        await self._flush()

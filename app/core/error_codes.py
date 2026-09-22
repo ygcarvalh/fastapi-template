@@ -19,12 +19,12 @@ class ErrorCode(StrEnum):
 
     AUTH_INVALID_CREDENTIALS = "auth.invalidCredentials"
     AUTH_BAD_LOGIN = "auth.badLogin"
-    AUTH_CURRENT_PASSWORD_INCORRECT = "auth.currentPasswordIncorrect"
+    AUTH_CURRENT_PASSWORD_INCORRECT = "auth.currentPasswordIncorrect"  # noqa: S105
     AUTH_IMPERSONATION_SELF = "auth.impersonationSelf"
     AUTH_IMPERSONATION_REVOKED = "auth.impersonationRevoked"
     AUTH_IMPERSONATION_BLOCKED = "auth.impersonationBlocked"
     AUTH_INSUFFICIENT_PERMISSIONS = "auth.insufficientPermissions"
-    AUTH_INVALID_TOKEN = "auth.invalidToken"
+    AUTH_INVALID_TOKEN = "auth.invalidToken"  # noqa: S105
     AUTH_EMAIL_NOT_VERIFIED = "auth.emailNotVerified"
 
     ITEM_NOT_FOUND = "item.notFound"
@@ -34,7 +34,7 @@ class ErrorCode(StrEnum):
 
     USER_NOT_FOUND = "user.notFound"
     USER_EMAIL_TAKEN = "user.emailTaken"
-    USER_PASSWORD_INCORRECT = "user.passwordIncorrect"
+    USER_PASSWORD_INCORRECT = "user.passwordIncorrect"  # noqa: S105
     USER_SELF_ADMIN_ROLE = "user.selfAdminRole"
     USER_CLOSE_OWN_ACCOUNT = "user.closeOwnAccount"
 

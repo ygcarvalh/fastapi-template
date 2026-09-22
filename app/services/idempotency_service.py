@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from app.models.idempotency_key import IdempotencyKey
 from app.schemas.idempotency import Attempt, Claim, ClaimState, StoredResponse
 from app.services.protocols import IdempotencyRepositoryProtocol
+from app.services.support import prune_before
 
 
 def fingerprint(attempt: Attempt) -> str:
@@ -65,8 +66,8 @@ class IdempotencyService:
             await self._repo.release(entry)
 
     async def prune_batch(self, retention: timedelta, batch_size: int) -> int:
-        return await self._repo.delete_batch_created_before(
-            datetime.now(UTC) - retention, batch_size
+        return await prune_before(
+            self._repo.delete_batch_created_before, retention, batch_size
         )
 
     async def _resolve(self, entry: IdempotencyKey, request_hash: str) -> Claim:

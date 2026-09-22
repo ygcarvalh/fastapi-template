@@ -5,12 +5,14 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.exceptions import PreconditionFailedError
 from app.models.item import Item
-from app.repositories.base import BaseRepository
+from app.repositories.base import CrudRepository, SoftDeleteRepository
 
 LOST_UPDATE = "This item changed while you were editing it"
 
 
-class ItemRepository(BaseRepository):
+class ItemRepository(CrudRepository[Item], SoftDeleteRepository[Item]):
+    _model = Item
+
     async def list_for_owner(
         self, owner_id: int, limit: int, offset: int
     ) -> Sequence[Item]:
@@ -35,16 +37,6 @@ class ItemRepository(BaseRepository):
                 Item.id == item_id, Item.owner_id == owner_id, Item.is_active()
             )
         )
-
-    async def create(self, item: Item) -> Item:
-        return await self._insert_refreshed(item)
-
-    async def save(self, item: Item) -> Item:
-        return await self._save(item)
-
-    async def soft_delete(self, item: Item) -> None:
-        item.mark_deleted()
-        await self._flush()
 
     async def _flush(self) -> None:
         try:

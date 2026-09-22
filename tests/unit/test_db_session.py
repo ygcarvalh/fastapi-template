@@ -1,5 +1,7 @@
 from app.db.session import dispose_engine, get_engine, get_session_factory
-from app.main import app, lifespan
+from app.main import create_app, lifespan
+
+app = create_app()
 
 
 async def test_get_engine_reuses_a_single_engine() -> None:

@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.authorization import ITEMS, READ, USERS
+from app.core.authorization import ITEMS, READ, USERS, granted
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.models.role import Scope
 from app.models.user import User
@@ -10,6 +10,8 @@ from tests.unit.fakes import (
     FakePermissionRepository,
     FakeRoleRepository,
     FakeUserRepository,
+    admin_role,
+    user_role,
 )
 
 
@@ -121,3 +123,25 @@ async def test_reading_a_role_that_is_not_there_raises() -> None:
 
     with pytest.raises(NotFoundError):
         await service.get(404)
+
+
+async def test_a_superadmin_gets_every_permission_at_all_scope() -> None:
+    service, _roles, _users = setup()
+    admin = User(id=1, email="admin@b.com", hashed_password="x", roles=[admin_role()])
+
+    grants = await service.effective_grants(admin)
+
+    permissions = await service.list_permissions()
+    assert len(grants) == len(permissions)
+    assert all(grant.scope == Scope.ALL for grant in grants)
+
+
+async def test_a_regular_account_gets_only_its_own_grants() -> None:
+    service, _roles, _users = setup()
+    plain = User(id=2, email="plain@b.com", hashed_password="x", roles=[user_role()])
+
+    grants = await service.effective_grants(plain)
+
+    assert [(g.resource, g.action, g.scope) for g in grants] == [
+        (resource, action, scope) for resource, action, scope in granted(plain)
+    ]

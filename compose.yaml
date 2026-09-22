@@ -56,7 +56,7 @@ services:
     command: >
       sh -c "alembic upgrade head &&
              fastapi-template demo-seed --if-enabled &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
+             uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers"
 
   # Every message the API sends lands here instead of in someone's inbox.
   # Read them at http://127.0.0.1:8025. Give MP_SMTP_RELAY_* the credentials of

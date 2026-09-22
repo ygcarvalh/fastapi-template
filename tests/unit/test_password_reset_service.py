@@ -19,8 +19,8 @@ OLD_PASSWORD = "old-secret"
 NEW_PASSWORD = "new-secret"
 
 
-def _user() -> User:
-    user = User(email=EMAIL, hashed_password=hash_password(OLD_PASSWORD))
+async def _user() -> User:
+    user = User(email=EMAIL, hashed_password=await hash_password(OLD_PASSWORD))
     user.id = 1
     return user
 
@@ -41,7 +41,7 @@ def _service(
 
 
 async def test_an_address_on_file_gets_a_link() -> None:
-    service, _, mailer = _service(_user())
+    service, _, mailer = _service(await _user())
 
     await service.request(EMAIL)
 
@@ -49,7 +49,7 @@ async def test_an_address_on_file_gets_a_link() -> None:
 
 
 async def test_an_address_nobody_registered_is_answered_with_silence() -> None:
-    service, _, mailer = _service(_user())
+    service, _, mailer = _service(await _user())
 
     await service.request("stranger@example.com")
 
@@ -57,7 +57,7 @@ async def test_an_address_nobody_registered_is_answered_with_silence() -> None:
 
 
 async def test_the_address_is_matched_however_it_was_typed() -> None:
-    service, _, mailer = _service(_user())
+    service, _, mailer = _service(await _user())
 
     await service.request("  READER@Example.com ")
 
@@ -65,17 +65,17 @@ async def test_the_address_is_matched_however_it_was_typed() -> None:
 
 
 async def test_following_the_link_changes_the_password() -> None:
-    user = _user()
+    user = await _user()
     service, _, mailer = _service(user)
     await service.request(EMAIL)
 
     await service.confirm(mailer.resets[0][1], NEW_PASSWORD)
 
-    assert verify_password(NEW_PASSWORD, user.hashed_password)
+    assert await verify_password(NEW_PASSWORD, user.hashed_password)
 
 
 async def test_a_reset_signs_every_other_session_out() -> None:
-    user = _user()
+    user = await _user()
     service, sessions, mailer = _service(user)
     await service.request(EMAIL)
 
@@ -85,7 +85,7 @@ async def test_a_reset_signs_every_other_session_out() -> None:
 
 
 async def test_a_link_cannot_be_followed_twice() -> None:
-    service, _, mailer = _service(_user())
+    service, _, mailer = _service(await _user())
     await service.request(EMAIL)
     token = mailer.resets[0][1]
     await service.confirm(token, NEW_PASSWORD)
@@ -95,7 +95,7 @@ async def test_a_link_cannot_be_followed_twice() -> None:
 
 
 async def test_asking_twice_retires_the_first_link() -> None:
-    service, _, mailer = _service(_user())
+    service, _, mailer = _service(await _user())
     await service.request(EMAIL)
     first = mailer.resets[0][1]
     await service.request(EMAIL)
@@ -105,7 +105,7 @@ async def test_asking_twice_retires_the_first_link() -> None:
 
 
 async def test_a_token_nobody_issued_is_refused() -> None:
-    service, _, _ = _service(_user())
+    service, _, _ = _service(await _user())
 
     with pytest.raises(AuthError) as raised:
         await service.confirm("invented", NEW_PASSWORD)
@@ -114,7 +114,7 @@ async def test_a_token_nobody_issued_is_refused() -> None:
 
 
 async def test_an_expired_link_is_refused() -> None:
-    user = _user()
+    user = await _user()
     mailer = FakeAccountMailer()
     service = PasswordResetService(
         FakeUserRepository([user]),
@@ -145,7 +145,7 @@ def _service_with_cooldown(
 
 
 async def test_a_reset_ends_the_access_tokens_already_minted() -> None:
-    user = _user()
+    user = await _user()
     service, _, mailer = _service(user)
     await service.request(EMAIL)
 
@@ -155,7 +155,7 @@ async def test_a_reset_ends_the_access_tokens_already_minted() -> None:
 
 
 async def test_asking_twice_in_a_row_sends_one_message() -> None:
-    service, mailer = _service_with_cooldown(_user(), timedelta(minutes=1))
+    service, mailer = _service_with_cooldown(await _user(), timedelta(minutes=1))
 
     await service.request(EMAIL)
     await service.request(EMAIL)
@@ -164,7 +164,7 @@ async def test_asking_twice_in_a_row_sends_one_message() -> None:
 
 
 async def test_the_cooldown_lets_go_once_it_has_passed() -> None:
-    service, mailer = _service_with_cooldown(_user(), timedelta(seconds=0))
+    service, mailer = _service_with_cooldown(await _user(), timedelta(seconds=0))
 
     await service.request(EMAIL)
     await service.request(EMAIL)
@@ -173,7 +173,7 @@ async def test_the_cooldown_lets_go_once_it_has_passed() -> None:
 
 
 async def test_a_cooled_down_request_still_answers_with_silence() -> None:
-    service, mailer = _service_with_cooldown(_user(), timedelta(minutes=1))
+    service, mailer = _service_with_cooldown(await _user(), timedelta(minutes=1))
     await service.request(EMAIL)
 
     await service.request("stranger@example.com")

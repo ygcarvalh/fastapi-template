@@ -15,17 +15,23 @@ class LocalStorage:
         path = self._path(key)
         await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
         size = 0
-        with path.open("wb") as handle:
+        handle = await asyncio.to_thread(path.open, "wb")
+        try:
             async for chunk in chunks:
                 size += len(chunk)
                 await asyncio.to_thread(handle.write, chunk)
+        finally:
+            await asyncio.to_thread(handle.close)
         return StoredFile(key, size)
 
     async def open(self, key: str) -> AsyncIterator[bytes]:
         path = self._path(key)
-        with path.open("rb") as handle:
+        handle = await asyncio.to_thread(path.open, "rb")
+        try:
             while chunk := await asyncio.to_thread(handle.read, READ_CHUNK_BYTES):
                 yield chunk
+        finally:
+            await asyncio.to_thread(handle.close)
 
     async def delete(self, key: str) -> None:
         await asyncio.to_thread(self._path(key).unlink, True)

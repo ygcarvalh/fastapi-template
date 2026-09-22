@@ -1,4 +1,6 @@
-from app.main import app
+from app.main import create_app
+
+app = create_app()
 
 PUBLIC_OPERATIONS = {
     ("post", "/api/v1/auth/login"),

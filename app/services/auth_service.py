@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache
 from typing import NamedTuple
 
 from app.core.audit.events import IMPERSONATION, audit_event
@@ -42,9 +41,14 @@ class ImpersonationGrant(NamedTuple):
     expires_in: int
 
 
-@lru_cache(maxsize=1)
-def _hash_for_absent_user() -> str:
-    return hash_password("absent-user-constant-time-placeholder")
+_absent_user_hash: str | None = None
+
+
+async def _hash_for_absent_user() -> str:
+    global _absent_user_hash
+    if _absent_user_hash is None:
+        _absent_user_hash = await hash_password("absent-user-constant-time-placeholder")
+    return _absent_user_hash
 
 
 class AuthService:
@@ -63,8 +67,10 @@ class AuthService:
 
     async def authenticate(self, email: str, password: str) -> TokenPair:
         user = await self._users.get_by_email(normalize_email(email))
-        hashed = user.hashed_password if user is not None else _hash_for_absent_user()
-        password_matches = verify_password(password, hashed)
+        hashed = (
+            user.hashed_password if user is not None else await _hash_for_absent_user()
+        )
+        password_matches = await verify_password(password, hashed)
         if user is None or not password_matches:
             raise AuthError(
                 "Incorrect email or password", code=ErrorCode.AUTH_BAD_LOGIN
@@ -138,12 +144,12 @@ class AuthService:
     # Every refresh token goes with the old password; access tokens already
     # minted keep working, since nothing is stored to compare them against.
     async def change_password(self, user: User, data: PasswordChange) -> None:
-        if not verify_password(data.current_password, user.hashed_password):
+        if not await verify_password(data.current_password, user.hashed_password):
             raise ForbiddenError(
                 "Current password is incorrect",
                 code=ErrorCode.AUTH_CURRENT_PASSWORD_INCORRECT,
             )
-        user.hashed_password = hash_password(data.new_password)
+        user.hashed_password = await hash_password(data.new_password)
         user.password_changed_at = datetime.now(UTC)
         await self._users.save(user)
         await self.revoke_sessions(user)

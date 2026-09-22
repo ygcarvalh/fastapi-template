@@ -4,20 +4,22 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, NamedTuple
 from uuid import uuid4
 
+import anyio.to_thread
 import jwt
 from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from pwdlib.hashers.bcrypt import BcryptHasher
 
 from app.core.config import get_settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AuthError
 
-password_hash = PasswordHash((BcryptHasher(),))
+password_hash = PasswordHash((Argon2Hasher(), BcryptHasher()))
 
 TokenType = Literal["access", "refresh"]
 
-ACCESS_TOKEN_TYPE: TokenType = "access"
-REFRESH_TOKEN_TYPE: TokenType = "refresh"
+ACCESS_TOKEN_TYPE: TokenType = "access"  # noqa: S105
+REFRESH_TOKEN_TYPE: TokenType = "refresh"  # noqa: S105
 
 INVALID_CREDENTIALS = "Invalid authentication credentials"
 
@@ -37,12 +39,12 @@ class AccessClaims(NamedTuple):
     issued_at: datetime
 
 
-def hash_password(password: str) -> str:
-    return password_hash.hash(password)
+async def hash_password(password: str) -> str:
+    return await anyio.to_thread.run_sync(password_hash.hash, password)
 
 
-def verify_password(password: str, hashed: str) -> bool:
-    return password_hash.verify(password, hashed)
+async def verify_password(password: str, hashed: str) -> bool:
+    return await anyio.to_thread.run_sync(password_hash.verify, password, hashed)
 
 
 # A digest, not a password hash: the token is already high-entropy, and the
@@ -76,7 +78,11 @@ def _create_token(
     }
     if impersonator is not None:
         payload[IMPERSONATOR_CLAIM] = {"sub": impersonator}
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        payload,
+        settings.secret_key.get_secret_value(),
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def create_access_token(subject: str) -> str:
@@ -111,7 +117,9 @@ def _decode(token: str, expected_type: TokenType) -> dict[str, Any]:
     settings = get_settings()
     try:
         payload: dict[str, Any] = jwt.decode(
-            token, settings.secret_key, algorithms=[settings.jwt_algorithm]
+            token,
+            settings.secret_key.get_secret_value(),
+            algorithms=[settings.jwt_algorithm],
         )
     except jwt.PyJWTError as exc:
         raise invalid_credentials() from exc

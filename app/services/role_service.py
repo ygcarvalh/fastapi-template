@@ -1,15 +1,17 @@
 from collections.abc import Sequence
 
+from app.core.authorization import granted, is_superuser
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
-from app.models.role import Permission, Role, RolePermission
+from app.models.role import Permission, Role, RolePermission, Scope
 from app.models.user import User, UserRole
-from app.schemas.role import RoleWrite
+from app.schemas.role import GrantRead, RoleWrite
 from app.services.protocols import (
     PermissionRepositoryProtocol,
     RoleRepositoryProtocol,
     UserRepositoryProtocol,
 )
+from app.services.support import or_not_found
 
 NAME_TAKEN = "Role name already in use"
 BUILT_IN = frozenset({UserRole.USER, UserRole.ADMIN})
@@ -32,15 +34,25 @@ class RoleService:
     async def list_permissions(self) -> Sequence[Permission]:
         return await self._permissions.list_all()
 
+    async def effective_grants(self, user: User) -> list[GrantRead]:
+        if is_superuser(user):
+            return [
+                GrantRead(resource=p.resource, action=p.action, scope=Scope.ALL)
+                for p in await self.list_permissions()
+            ]
+        return [
+            GrantRead(resource=resource, action=action, scope=scope)
+            for resource, action, scope in granted(user)
+        ]
+
     async def members(self, role_id: int) -> Sequence[User]:
         role = await self.get(role_id)
         return await self._users.list_for_role(role.id)
 
     async def get(self, role_id: int) -> Role:
-        role = await self._roles.get(role_id)
-        if role is None:
-            raise NotFoundError("Role not found", code=ErrorCode.ROLE_NOT_FOUND)
-        return role
+        return or_not_found(
+            await self._roles.get(role_id), "Role not found", ErrorCode.ROLE_NOT_FOUND
+        )
 
     async def create(self, data: RoleWrite) -> Role:
         if await self._roles.get_by_name(data.name) is not None:

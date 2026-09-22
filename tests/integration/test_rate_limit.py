@@ -74,6 +74,28 @@ def test_rate_limit_settings_are_configurable() -> None:
     assert get_settings().register_rate_limit
 
 
+def test_create_app_reads_storage_uri_at_call_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_STORAGE_URI", "")
+    get_settings.cache_clear()
+    first_app = create_app()
+    first_storage_uri = first_app.state.limiter._storage_uri
+    first_storage = first_app.state.limiter._storage
+
+    monkeypatch.setenv("RATE_LIMIT_STORAGE_URI", "memory://second")
+    get_settings.cache_clear()
+    second_app = create_app()
+    second_storage_uri = second_app.state.limiter._storage_uri
+    second_storage = second_app.state.limiter._storage
+
+    get_settings.cache_clear()
+
+    assert first_storage_uri in (None, "")
+    assert second_storage_uri == "memory://second"
+    assert first_storage is not second_storage
+
+
 async def test_a_throttled_response_carries_the_envelope(
     throttled_client: AsyncClient,
 ) -> None:

@@ -1,29 +1,42 @@
-from starlette.background import BackgroundTask, BackgroundTasks
-from starlette.responses import Response
+from starlette.types import Receive, Scope, Send
 
-from app.core.observability.request_logging import _after_response
+from app.core.observability.request_logging import RequestLoggingMiddleware
+from app.schemas.request_log import RequestRecord
 
-
-def _noop() -> None: ...
-
-
-def test_a_response_without_work_takes_the_task() -> None:
-    response = Response()
-    task = BackgroundTask(_noop)
-
-    _after_response(response, task)
-
-    assert response.background is task
+RECORD = RequestRecord(
+    request_id="r-1", method="GET", path="/x", status_code=200, duration_ms=1.0
+)
 
 
-def test_work_a_route_queued_is_kept() -> None:
-    response = Response()
-    theirs = BackgroundTask(_noop)
-    response.background = theirs
-    ours = BackgroundTask(_noop)
+async def _unreachable_app(scope: Scope, receive: Receive, send: Send) -> None:
+    raise AssertionError("the downstream app is never called by this test")
 
-    _after_response(response, ours)
 
-    queued = response.background
-    assert isinstance(queued, BackgroundTasks)
-    assert queued.tasks == [theirs, ours]
+def _middleware(recorder: object) -> RequestLoggingMiddleware:
+    return RequestLoggingMiddleware(
+        _unreachable_app,
+        excluded_paths=[],
+        recorder=recorder,  # type: ignore[arg-type]
+    )
+
+
+async def test_a_record_is_handed_to_the_recorder() -> None:
+    seen: list[RequestRecord] = []
+
+    async def recorder(record: RequestRecord) -> None:
+        seen.append(record)
+
+    await _middleware(recorder)._persist(RECORD)
+
+    assert seen == [RECORD]
+
+
+async def test_a_failed_write_does_not_raise() -> None:
+    async def recorder(record: RequestRecord) -> None:
+        raise RuntimeError("the audit table is gone")
+
+    await _middleware(recorder)._persist(RECORD)
+
+
+async def test_nothing_is_written_without_a_recorder() -> None:
+    await _middleware(None)._persist(RECORD)

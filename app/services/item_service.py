@@ -1,10 +1,11 @@
 from collections.abc import Sequence
 
 from app.core.error_codes import ErrorCode
-from app.core.exceptions import NotFoundError, PreconditionFailedError
+from app.core.exceptions import PreconditionFailedError
 from app.models.item import Item
 from app.schemas.item import ItemCreate, ItemUpdate
 from app.services.protocols import ItemRepositoryProtocol
+from app.services.support import or_not_found
 
 STALE_READ = "This item changed since you read it"
 
@@ -25,10 +26,11 @@ class ItemService:
         return await self._repo.create(item)
 
     async def get_for_owner(self, item_id: int, owner_id: int) -> Item:
-        item = await self._repo.get_for_owner(item_id, owner_id)
-        if item is None:
-            raise NotFoundError("Item not found", code=ErrorCode.ITEM_NOT_FOUND)
-        return item
+        return or_not_found(
+            await self._repo.get_for_owner(item_id, owner_id),
+            "Item not found",
+            ErrorCode.ITEM_NOT_FOUND,
+        )
 
     async def update(
         self,

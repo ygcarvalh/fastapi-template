@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.authorization import outranks
 from app.core.error_codes import ErrorCode
-from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.exceptions import ConflictError, ForbiddenError
 from app.core.security import hash_password, verify_password
 from app.models.role import Role
 from app.models.user import User, UserRole
@@ -14,6 +14,7 @@ from app.services.protocols import (
     RoleRepositoryProtocol,
     UserRepositoryProtocol,
 )
+from app.services.support import or_not_found
 
 EMAIL_TAKEN = "Email already registered"
 UNIQUE_VIOLATION = "23505"
@@ -39,10 +40,24 @@ class UserService:
         self._roles = roles
 
     async def _role(self, name: str) -> Role:
-        role = await self._roles.get_by_name(name)
-        if role is None:
-            raise NotFoundError("Role not found", code=ErrorCode.ROLE_NOT_FOUND)
-        return role
+        return or_not_found(
+            await self._roles.get_by_name(name),
+            "Role not found",
+            ErrorCode.ROLE_NOT_FOUND,
+        )
+
+    async def _role_by_id(self, role_id: int) -> Role:
+        return or_not_found(
+            await self._roles.get(role_id), "Role not found", ErrorCode.ROLE_NOT_FOUND
+        )
+
+    async def add_role_by_id(self, user_id: int, role_id: int) -> User:
+        role = await self._role_by_id(role_id)
+        return await self.add_role(user_id, role.name)
+
+    async def remove_role_by_id(self, actor: User, user_id: int, role_id: int) -> User:
+        role = await self._role_by_id(role_id)
+        return await self.remove_role(actor, user_id, role.name)
 
     async def register(self, data: UserCreate) -> User:
         if await self._repo.get_by_email(data.email) is not None:
@@ -51,7 +66,7 @@ class UserService:
         user = User(
             email=data.email,
             name=data.name,
-            hashed_password=hash_password(data.password),
+            hashed_password=await hash_password(data.password),
             roles=[await self._role(UserRole.ADMIN if first else UserRole.USER)],
         )
         try:
@@ -60,10 +75,9 @@ class UserService:
             raise _as_conflict(error) from error
 
     async def get(self, user_id: int) -> User:
-        user = await self._repo.get(user_id)
-        if user is None:
-            raise NotFoundError("User not found", code=ErrorCode.USER_NOT_FOUND)
-        return user
+        return or_not_found(
+            await self._repo.get(user_id), "User not found", ErrorCode.USER_NOT_FOUND
+        )
 
     async def update(self, user: User, data: UserUpdate) -> User:
         fields = data.model_dump(exclude_unset=True)
@@ -108,7 +122,7 @@ class UserService:
     # What the account owns goes with it, so a deactivated address that
     # registers again starts empty.
     async def deactivate(self, user: User, password: str) -> None:
-        if not verify_password(password, user.hashed_password):
+        if not await verify_password(password, user.hashed_password):
             raise ForbiddenError(
                 "Password is incorrect", code=ErrorCode.USER_PASSWORD_INCORRECT
             )

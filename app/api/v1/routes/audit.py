@@ -1,25 +1,17 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import Query
 
-from app.api.deps import (
-    AuditLogServiceDep,
-    CurrentUser,
-    RequireAuth,
-    require_permission,
-)
+from app.api.deps import AuditLogServiceDep, CurrentUser, require_permission
+from app.api.v1.routing import protected_router
 from app.core.authorization import AUDIT_LOG, READ
-from app.core.features import Feature, require_feature
+from app.core.features import Feature
 from app.models.role import Scope
 from app.schemas.audit_log import AuditLogQuery, AuditLogRead
-from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.schemas.pagination import CursorPage
 
-private_router = APIRouter(
-    prefix="/audit",
-    tags=["audit"],
-    dependencies=[require_feature(Feature.AUDIT_LOG), RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
+private_router = protected_router(
+    prefix="/audit", tags=["audit"], feature=Feature.AUDIT_LOG
 )
 
 
@@ -31,8 +23,9 @@ async def list_audit_entries(
     scope: Annotated[Scope, require_permission(AUDIT_LOG, READ)],
 ) -> CursorPage[AuditLogRead]:
     entries, next_cursor = await service.list_for(current_user, scope, query)
-    return CursorPage(
-        items=[AuditLogRead.model_validate(entry) for entry in entries],
+    return CursorPage.of(
+        entries,
+        AuditLogRead.model_validate,
         limit=query.limit,
         next_cursor=next_cursor,
     )

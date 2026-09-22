@@ -72,7 +72,7 @@ async def test_every_demo_account_logs_in_with_the_documented_password(
     await actions.demo_seed()
 
     for user in await _users(factory):
-        assert verify_password(DEMO_PASSWORD, user.hashed_password)
+        assert await verify_password(DEMO_PASSWORD, user.hashed_password)
 
 
 async def test_the_admin_account_holds_the_administrator_role(
