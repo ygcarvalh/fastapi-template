@@ -348,3 +348,59 @@ async def test_closing_an_account_that_is_not_there_is_not_found() -> None:
 
     with pytest.raises(NotFoundError):
         await service.remove(actor, 404)
+
+
+async def test_a_role_is_added_by_its_id() -> None:
+    target = User(id=2, email="other@b.com", hashed_password="x", roles=[user_role()])
+    users = FakeUserRepository([_admin(), target])
+    roles = FakeRoleRepository()
+    admin = await roles.get_by_name(UserRole.ADMIN)
+    assert admin is not None
+    service = UserService(users, FakeItemRepository(), roles)
+
+    result = await service.add_role_by_id(2, admin.id)
+
+    assert [role.name for role in result.roles] == [UserRole.USER, UserRole.ADMIN]
+
+
+async def test_adding_a_role_by_an_id_nobody_defined_raises() -> None:
+    target = User(id=2, email="other@b.com", hashed_password="x", roles=[user_role()])
+    service = UserService(
+        FakeUserRepository([_admin(), target]),
+        FakeItemRepository(),
+        FakeRoleRepository(),
+    )
+
+    with pytest.raises(NotFoundError):
+        await service.add_role_by_id(2, 404)
+
+
+async def test_a_role_is_removed_by_its_id() -> None:
+    target = User(
+        id=2,
+        email="other@b.com",
+        hashed_password="x",
+        roles=[user_role(), admin_role()],
+    )
+    roles = FakeRoleRepository()
+    admin = await roles.get_by_name(UserRole.ADMIN)
+    assert admin is not None
+    service = UserService(
+        FakeUserRepository([_admin(), target]), FakeItemRepository(), roles
+    )
+
+    result = await service.remove_role_by_id(_admin(), 2, admin.id)
+
+    assert [role.name for role in result.roles] == [UserRole.USER]
+
+
+async def test_removing_a_role_by_an_id_nobody_defined_raises() -> None:
+    target = User(id=2, email="other@b.com", hashed_password="x", roles=[user_role()])
+    service = UserService(
+        FakeUserRepository([_admin(), target]),
+        FakeItemRepository(),
+        FakeRoleRepository(),
+    )
+
+    with pytest.raises(NotFoundError):
+        await service.remove_role_by_id(_admin(), 2, 404)

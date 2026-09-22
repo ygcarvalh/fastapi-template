@@ -46,6 +46,19 @@ class UserService:
             ErrorCode.ROLE_NOT_FOUND,
         )
 
+    async def _role_by_id(self, role_id: int) -> Role:
+        return or_not_found(
+            await self._roles.get(role_id), "Role not found", ErrorCode.ROLE_NOT_FOUND
+        )
+
+    async def add_role_by_id(self, user_id: int, role_id: int) -> User:
+        role = await self._role_by_id(role_id)
+        return await self.add_role(user_id, role.name)
+
+    async def remove_role_by_id(self, actor: User, user_id: int, role_id: int) -> User:
+        role = await self._role_by_id(role_id)
+        return await self.remove_role(actor, user_id, role.name)
+
     async def register(self, data: UserCreate) -> User:
         if await self._repo.get_by_email(data.email) is not None:
             raise ConflictError(EMAIL_TAKEN, code=ErrorCode.USER_EMAIL_TAKEN)

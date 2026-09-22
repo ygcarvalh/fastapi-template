@@ -62,13 +62,9 @@ async def list_role_members(role_id: int, service: RoleServiceDep) -> list[UserR
     "/{role_id}/users", dependencies=[require_permission(ROLES, UPDATE)]
 )
 async def add_role_member(
-    role_id: int,
-    data: MemberAssignment,
-    roles: RoleServiceDep,
-    users: UserServiceDep,
+    role_id: int, data: MemberAssignment, users: UserServiceDep
 ) -> UserRead:
-    role = await roles.get(role_id)
-    return UserRead.model_validate(await users.add_role(data.user_id, role.name))
+    return UserRead.model_validate(await users.add_role_by_id(data.user_id, role_id))
 
 
 @private_router.delete(
@@ -78,9 +74,7 @@ async def remove_role_member(
     role_id: int,
     user_id: int,
     current_user: CurrentUser,
-    roles: RoleServiceDep,
     users: UserServiceDep,
 ) -> UserRead:
-    role = await roles.get(role_id)
-    user = await users.remove_role(current_user, user_id, role.name)
+    user = await users.remove_role_by_id(current_user, user_id, role_id)
     return UserRead.model_validate(user)
