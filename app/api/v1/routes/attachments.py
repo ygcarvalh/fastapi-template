@@ -2,20 +2,21 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, UploadFile, status
+from fastapi import File, UploadFile, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import AttachmentServiceDep, CurrentUser, RequireAuth
-from app.core.features import Feature, require_feature
+from app.api.deps import AttachmentServiceDep, CurrentUser
+from app.api.v1.routing import protected_router
+from app.core.features import Feature
 from app.models.attachment import Attachment
 from app.schemas.attachment import AttachmentRead
-from app.schemas.error import AUTHENTICATED_ERROR_RESPONSES
 from app.services.attachment_service import Upload
 
-private_router = APIRouter(
-    tags=["attachments"],
-    dependencies=[require_feature(Feature.ITEMS), RequireAuth],
-    responses=AUTHENTICATED_ERROR_RESPONSES,
+item_attachments_router = protected_router(
+    prefix="/items", tags=["attachments"], feature=Feature.ITEMS
+)
+attachments_router = protected_router(
+    prefix="/attachments", tags=["attachments"], feature=Feature.ITEMS
 )
 
 CHUNK_BYTES = 64 * 1024
@@ -33,8 +34,8 @@ def _disposition(attachment: Attachment) -> str:
     return f"attachment; filename=\"{quoted}\"; filename*=UTF-8''{encoded}"
 
 
-@private_router.post(
-    "/items/{item_id}/attachments", status_code=status.HTTP_201_CREATED
+@item_attachments_router.post(
+    "/{item_id}/attachments", status_code=status.HTTP_201_CREATED
 )
 async def add_attachment(
     item_id: int,
@@ -50,7 +51,7 @@ async def add_attachment(
     return AttachmentRead.model_validate(stored)
 
 
-@private_router.get("/items/{item_id}/attachments")
+@item_attachments_router.get("/{item_id}/attachments")
 async def list_attachments(
     item_id: int, current_user: CurrentUser, service: AttachmentServiceDep
 ) -> list[AttachmentRead]:
@@ -58,7 +59,7 @@ async def list_attachments(
     return [AttachmentRead.model_validate(entry) for entry in stored]
 
 
-@private_router.get("/attachments/{attachment_id}/content")
+@attachments_router.get("/{attachment_id}/content")
 async def download_attachment(
     attachment_id: int, current_user: CurrentUser, service: AttachmentServiceDep
 ) -> StreamingResponse:
@@ -70,9 +71,7 @@ async def download_attachment(
     )
 
 
-@private_router.delete(
-    "/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@attachments_router.delete("/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_attachment(
     attachment_id: int, current_user: CurrentUser, service: AttachmentServiceDep
 ) -> None:
