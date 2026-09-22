@@ -108,3 +108,78 @@ def test_an_upload_ceiling_under_the_body_limit_starts(
     monkeypatch.setenv("MAX_ATTACHMENT_BYTES", "5242880")
 
     assert Settings().max_attachment_bytes == 5242880  # type: ignore[call-arg]
+
+
+def test_docs_default_on_outside_production() -> None:
+    settings = Settings(
+        database_url=_DATABASE_URL,
+        secret_key=_STRONG_SECRET,
+        environment="staging",
+        docs_enabled=None,
+    )
+
+    assert settings.docs_are_enabled is True
+
+
+def test_docs_default_off_in_production() -> None:
+    settings = Settings(
+        database_url=_DATABASE_URL,
+        secret_key=_STRONG_SECRET,
+        environment="production",
+        docs_enabled=None,
+    )
+
+    assert settings.docs_are_enabled is False
+
+
+def test_docs_enabled_explicitly_overrides_the_environment_default() -> None:
+    settings = Settings(
+        database_url=_DATABASE_URL,
+        secret_key=_STRONG_SECRET,
+        environment="production",
+        docs_enabled=True,
+    )
+
+    assert settings.docs_are_enabled is True
+
+
+def test_hsts_default_off_outside_production() -> None:
+    settings = Settings(
+        database_url=_DATABASE_URL,
+        secret_key=_STRONG_SECRET,
+        environment="staging",
+        hsts_enabled=None,
+    )
+
+    assert settings.hsts_is_enabled is False
+
+
+def test_hsts_default_on_in_production() -> None:
+    settings = Settings(
+        database_url=_DATABASE_URL,
+        secret_key=_STRONG_SECRET,
+        environment="production",
+        hsts_enabled=None,
+    )
+
+    assert settings.hsts_is_enabled is True
+
+
+def test_hsts_enabled_explicitly_overrides_the_environment_default() -> None:
+    settings = Settings(
+        database_url=_DATABASE_URL,
+        secret_key=_STRONG_SECRET,
+        environment="development",
+        hsts_enabled=True,
+    )
+
+    assert settings.hsts_is_enabled is True
+
+
+def test_rejects_an_unsupported_environment() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url=_DATABASE_URL,
+            secret_key=_STRONG_SECRET,
+            environment="prod",  # type: ignore[arg-type]
+        )

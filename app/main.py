@@ -69,9 +69,9 @@ def create_app() -> Application:
     app = Application(
         title="FastAPI Template",
         lifespan=lifespan,
-        docs_url="/docs" if settings.docs_enabled else None,
-        redoc_url="/redoc" if settings.docs_enabled else None,
-        openapi_url="/openapi.json" if settings.docs_enabled else None,
+        docs_url="/docs" if settings.docs_are_enabled else None,
+        redoc_url="/redoc" if settings.docs_are_enabled else None,
+        openapi_url="/openapi.json" if settings.docs_are_enabled else None,
     )
     app.state = AppState()
     app.state.scheduler = None
@@ -86,7 +86,7 @@ def create_app() -> Application:
         BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes
     )
     register_rate_limiting(app)
-    register_security_headers(app, hsts_enabled=settings.hsts_enabled)
+    register_security_headers(app, hsts_enabled=settings.hsts_is_enabled)
     register_request_logging(
         app,
         excluded_paths=parse_excluded_paths(settings.request_log_excluded_paths),

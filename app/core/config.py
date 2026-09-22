@@ -24,10 +24,11 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     impersonation_token_expire_minutes: int = 30
 
-    docs_enabled: bool = True
+    environment: Literal["development", "staging", "production"] = "development"
+    docs_enabled: bool | None = None
     cors_origins: str = ""
     max_request_body_bytes: Annotated[int, Field(gt=0)] = 8 * 1024 * 1024
-    hsts_enabled: bool = False
+    hsts_enabled: bool | None = None
     rate_limit_storage_uri: str = ""
     login_rate_limit: str = "10/minute"
     register_rate_limit: str = "5/minute"
@@ -83,6 +84,18 @@ class Settings(BaseSettings):
         return [
             origin.strip() for origin in self.cors_origins.split(",") if origin.strip()
         ]
+
+    @property
+    def docs_are_enabled(self) -> bool:
+        if self.docs_enabled is not None:
+            return self.docs_enabled
+        return self.environment != "production"
+
+    @property
+    def hsts_is_enabled(self) -> bool:
+        if self.hsts_enabled is not None:
+            return self.hsts_enabled
+        return self.environment == "production"
 
     @field_validator("cors_origins")
     @classmethod
