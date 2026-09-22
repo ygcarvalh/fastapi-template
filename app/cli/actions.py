@@ -3,10 +3,10 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api import deps
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.security import hash_password
-from app.core.storage.local import LocalStorage
 from app.db.demo import seed_demo
 from app.db.seed import seed_roles
 from app.db.session import get_session_factory
@@ -99,7 +99,7 @@ async def demo_seed(if_enabled: bool = False) -> str:
         if (await session.execute(select(Role))).scalars().first() is None:
             await seed_roles(session)
 
-        counts = await seed_demo(session, LocalStorage(settings.storage_root))
+        counts = await seed_demo(session, deps.get_storage())
         await session.commit()
         return (
             f"seeded {counts.users} demo users, {counts.items} items, "
