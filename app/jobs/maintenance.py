@@ -1,6 +1,8 @@
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.audit.context import audit_suppressed
 from app.core.constants import DELETE_BATCH_SIZE
 from app.db.session import get_session_factory
@@ -20,43 +22,40 @@ PRUNE_IDEMPOTENCY_KEYS = "prune-idempotency-keys"
 EXPIRE_TOKENS = "expire-tokens"
 
 Work = Callable[[], Awaitable[int]]
+PruneBatch = Callable[[timedelta, int], Awaitable[int]]
+
+
+# One session for the whole drain: each batch commits in turn, so a job that
+# dies partway through has already persisted every batch before it.
+async def _drain(
+    session: AsyncSession, prune_batch: PruneBatch, retention: timedelta
+) -> int:
+    removed = 0
+    while True:
+        batch = await prune_batch(retention, DELETE_BATCH_SIZE)
+        await session.commit()
+        removed += batch
+        if batch < DELETE_BATCH_SIZE:
+            return removed
 
 
 async def prune_audit_log(retention: timedelta) -> int:
-    removed = 0
     with audit_suppressed():
         async with get_session_factory()() as session:
             service = AuditLogService(AuditLogRepository(session))
-            while True:
-                batch = await service.prune_batch(retention, DELETE_BATCH_SIZE)
-                await session.commit()
-                removed += batch
-                if batch < DELETE_BATCH_SIZE:
-                    return removed
+            return await _drain(session, service.prune_batch, retention)
 
 
 async def prune_request_log(retention: timedelta) -> int:
-    removed = 0
     async with get_session_factory()() as session:
         service = RequestLogService(RequestLogRepository(session))
-        while True:
-            batch = await service.prune_batch(retention, DELETE_BATCH_SIZE)
-            await session.commit()
-            removed += batch
-            if batch < DELETE_BATCH_SIZE:
-                return removed
+        return await _drain(session, service.prune_batch, retention)
 
 
 async def prune_idempotency_keys(retention: timedelta) -> int:
-    removed = 0
     async with get_session_factory()() as session:
         service = IdempotencyService(IdempotencyRepository(session))
-        while True:
-            batch = await service.prune_batch(retention, DELETE_BATCH_SIZE)
-            await session.commit()
-            removed += batch
-            if batch < DELETE_BATCH_SIZE:
-                return removed
+        return await _drain(session, service.prune_batch, retention)
 
 
 async def expire_tokens() -> int:
