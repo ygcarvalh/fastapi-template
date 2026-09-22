@@ -7,6 +7,8 @@ from fastapi import Request, Response, status
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.error_codes import ErrorCode
+from app.core.exceptions import PayloadTooLargeError
+from app.core.http.body_limit import BODY_TOO_LARGE_DETAIL
 from app.core.http.errors import error_response
 from app.schemas.idempotency import Attempt, Claim, ClaimState, StoredResponse
 
@@ -110,7 +112,19 @@ class IdempotencyMiddleware:
             await self._app(scope, receive, send)
             return
 
-        body = await request.body()
+        try:
+            body = await request.body()
+        except PayloadTooLargeError:
+            await self._refuse(
+                request,
+                scope,
+                receive,
+                send,
+                status_code=PayloadTooLargeError.status_code,
+                detail=BODY_TOO_LARGE_DETAIL,
+                code=ErrorCode.PAYLOAD_TOO_LARGE,
+            )
+            return
         attempt = Attempt(caller, key, request.method, request.url.path, body)
         claim = await self._store.claim(attempt)
 

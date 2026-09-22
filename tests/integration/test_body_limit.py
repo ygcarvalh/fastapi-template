@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.config import get_settings
 from app.core.http.body_limit import BODY_TOO_LARGE_DETAIL
+from app.core.security import create_access_token
 from app.main import create_app
 
 LIMIT = 64
@@ -56,6 +57,28 @@ async def test_a_chunked_body_is_cut_off_once_it_passes_the_limit(
     )
 
     assert response.status_code == 413
+
+
+async def test_a_chunked_body_over_the_limit_is_413_under_idempotency(
+    bounded_client: AsyncClient,
+) -> None:
+    token = create_access_token("1")
+    response = await bounded_client.post(
+        "/api/v1/auth/logout",
+        content=_chunks(total=LIMIT * 4, size=16),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "chunked-over-limit",
+        },
+    )
+
+    assert response.status_code == 413
+    body = response.json()
+    assert body["detail"] == BODY_TOO_LARGE_DETAIL
+    assert body["message"] == BODY_TOO_LARGE_DETAIL
+    assert body["code"] == "error.payloadTooLarge"
+    assert body["request_id"] == response.headers["x-request-id"]
 
 
 async def test_a_body_at_the_limit_reaches_the_route(
