@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     idempotency_in_flight_timeout_seconds: Annotated[int, Field(gt=0)] = 60
 
     app_base_url: str = "http://localhost:4200"
+    storage_backend: Literal["local"] = "local"
     storage_root: str = "var/uploads"
     max_attachment_bytes: Annotated[int, Field(gt=0)] = 5 * 1024 * 1024
     attachment_content_types: str = (

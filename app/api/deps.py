@@ -142,7 +142,10 @@ RoleServiceDep = Annotated[RoleService, Depends(get_role_service)]
 
 
 def get_storage() -> Storage:
-    return LocalStorage(get_settings().storage_root)
+    settings = get_settings()
+    if settings.storage_backend == "local":
+        return LocalStorage(settings.storage_root)
+    raise ValueError(f"unknown storage backend: {settings.storage_backend}")
 
 
 def get_attachment_service(session: SessionDep) -> AttachmentService:
