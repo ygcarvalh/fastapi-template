@@ -3,6 +3,9 @@ from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
+from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -18,6 +21,19 @@ from app.db.session import get_session
 from app.main import create_app
 
 POSTGRES_IMAGE = "postgres:17-alpine"
+
+CHEAP_ARGON2 = Argon2Hasher(time_cost=1, memory_cost=8, parallelism=1)
+CHEAP_BCRYPT = BcryptHasher(rounds=4)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cheap_password_hashing() -> Iterator[None]:
+    import app.core.security as security
+
+    original = security.password_hash
+    security.password_hash = PasswordHash((CHEAP_ARGON2, CHEAP_BCRYPT))
+    yield
+    security.password_hash = original
 
 
 @pytest.fixture(scope="session")
