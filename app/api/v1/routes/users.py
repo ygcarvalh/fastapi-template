@@ -12,19 +12,10 @@ from app.api.deps import (
     require_permission,
 )
 from app.api.v1.routing import protected_router
-from app.core.authorization import (
-    DELETE,
-    FEATURE_FLAGS,
-    READ,
-    UPDATE,
-    USERS,
-    granted,
-    is_superuser,
-)
+from app.core.authorization import DELETE, FEATURE_FLAGS, READ, UPDATE, USERS
 from app.core.config import get_settings
 from app.core.features import available_features
 from app.core.http.rate_limit import limiter
-from app.models.role import Scope
 from app.schemas.pagination import Page, PageParams
 from app.schemas.preferences import (
     AccountFeaturesRead,
@@ -100,19 +91,7 @@ async def deactivate_me(
 async def read_my_permissions(
     current_user: CurrentUser, roles: RoleServiceDep
 ) -> list[GrantRead]:
-    if is_superuser(current_user):
-        return [
-            GrantRead(
-                resource=permission.resource,
-                action=permission.action,
-                scope=Scope.ALL,
-            )
-            for permission in await roles.list_permissions()
-        ]
-    return [
-        GrantRead(resource=resource, action=action, scope=scope)
-        for resource, action, scope in granted(current_user)
-    ]
+    return await roles.effective_grants(current_user)
 
 
 @private_router.get("", dependencies=[require_permission(USERS, READ)])
