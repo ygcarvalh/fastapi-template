@@ -18,7 +18,6 @@ from app.api.v1.routing import protected_router
 from app.core.authorization import IMPERSONATE, USERS
 from app.core.config import get_settings
 from app.core.http.rate_limit import limiter
-from app.models.role import Scope
 from app.schemas.auth import (
     EmailVerificationConfirm,
     ImpersonationToken,
@@ -77,7 +76,10 @@ async def stop_impersonating(actor: CurrentActor, service: AuthServiceDep) -> No
         await service.stop_impersonating(actor.user)
 
 
-@private_router.post("/impersonate/{user_id}")
+@private_router.post(
+    "/impersonate/{user_id}",
+    dependencies=[require_permission(USERS, IMPERSONATE)],
+)
 @limiter.limit(lambda: get_settings().login_rate_limit)
 async def impersonate(
     request: Request,
@@ -85,7 +87,6 @@ async def impersonate(
     current_user: CurrentUser,
     users: UserServiceDep,
     service: AuthServiceDep,
-    scope: Annotated[Scope, require_permission(USERS, IMPERSONATE)],
 ) -> ImpersonationToken:
     target = await users.get(user_id)
     grant = await service.impersonate(current_user, target)
