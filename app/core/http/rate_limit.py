@@ -24,6 +24,17 @@ def register_rate_limiting(app: FastAPI) -> None:
     # `Limiter.__init__` again on it: that would also reset the per-route
     # limits the decorators already registered on it, since those routes are
     # never re-imported and so never re-decorated.
+    #
+    # A consequence: this mutates the shared module-level `limiter` in place,
+    # so if two `create_app()`-built apps are alive at the same time in one
+    # process, they share the exact same `Limiter` object and storage
+    # backend, and whichever app was created most recently silently
+    # reconfigures storage for every other still-alive app too. That's fine
+    # for how this codebase actually runs it — one app per process in
+    # production, and tests build apps one after another, not concurrently —
+    # but would need a real per-app `Limiter` instance (and route decorators
+    # reworked to look it up per request instead of closing over a module
+    # singleton) if that usage pattern ever changes.
     reconfigured = Limiter(
         key_func=get_remote_address,
         storage_uri=get_settings().rate_limit_storage_uri or None,
@@ -31,7 +42,7 @@ def register_rate_limiting(app: FastAPI) -> None:
     limiter._storage_uri = reconfigured._storage_uri
     limiter._storage = reconfigured._storage
     limiter._limiter = reconfigured._limiter
-    limiter._storage_dead = False
+    limiter._storage_dead = reconfigured._storage_dead
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
 
