@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import PurePosixPath
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 from uuid import uuid4
 
 import structlog
@@ -78,7 +78,13 @@ class AttachmentService:
 
         key = uuid4().hex
         stored = await self._storage.save(key, self._bounded(upload.chunks, key))
-        attachment = await self._repo.create(
+        # Registered before the insert, not after: if the row insert itself
+        # raises (FK violation, a concurrently deleted item, ...), the
+        # request still rolls back and this listener must already be in
+        # place to clean up the blob that made it to disk. A listener that
+        # fires for a row that was never created is harmless.
+        self._delete_key_on_rollback(stored.key)
+        return await self._repo.create(
             Attachment(
                 key=stored.key,
                 filename=safe_filename(upload.filename),
@@ -87,8 +93,6 @@ class AttachmentService:
                 item_id=item_id,
             )
         )
-        self._delete_key_on_rollback(stored.key)
-        return attachment
 
     async def list_for_item(self, item_id: int, owner_id: int) -> Sequence[Attachment]:
         await self._owned_item(item_id, owner_id)
@@ -135,7 +139,9 @@ class AttachmentService:
     def _delete_key_on_commit(self, key: str) -> None:
         self._settle_key_on_next_outcome(key, delete_on="after_commit")
 
-    def _settle_key_on_next_outcome(self, key: str, *, delete_on: str) -> None:
+    def _settle_key_on_next_outcome(
+        self, key: str, *, delete_on: Literal["after_commit", "after_rollback"]
+    ) -> None:
         # The transaction this key's fate depends on ends in exactly one of
         # `after_commit` or `after_rollback` — never both. Both hooks are
         # registered as a pair so whichever one the session actually fires
@@ -144,13 +150,29 @@ class AttachmentService:
         # unrelated transaction (e.g. a second add()/remove() sharing this
         # same long-lived session).
         sync_session = self._session.sync_session
+        retired = False
 
         def on_commit(session: SyncSession) -> None:
+            nonlocal retired
+            # SQLAlchemy fires after_commit/after_rollback for SAVEPOINT
+            # (nested) transactions too, not only the outermost one. A
+            # begin_nested() release or rollback happening while our own,
+            # outer transaction is still open is not "our" outcome yet —
+            # acting on it here would delete/keep files based on a
+            # sub-transaction that could still be undone or superseded by
+            # the real outer commit/rollback later.
+            if retired or session.in_nested_transaction():
+                return
+            retired = True
             self._deregister_pair(sync_session, on_commit, on_rollback)
             if delete_on == "after_commit":
                 self._schedule_delete(key)
 
         def on_rollback(session: SyncSession) -> None:
+            nonlocal retired
+            if retired or session.in_nested_transaction():
+                return
+            retired = True
             self._deregister_pair(sync_session, on_commit, on_rollback)
             if delete_on == "after_rollback":
                 self._schedule_delete(key)

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -87,6 +88,33 @@ async def test_a_removed_attachment_is_gone_from_the_listing(
     assert removed.status_code == 204
     listing = await auth_client.get(f"/api/v1/items/{item_id}/attachments")
     assert listing.json() == []
+
+
+async def _remaining_files(root: Path) -> list[Path]:
+    return await asyncio.to_thread(lambda: list(root.iterdir()))
+
+
+async def test_a_removed_attachment_is_gone_from_disk(
+    auth_client: AsyncClient, storage_root: Path
+) -> None:
+    item_id = await _item(auth_client)
+    uploaded = await auth_client.post(
+        f"/api/v1/items/{item_id}/attachments", files={"file": TEXT}
+    )
+    assert await _remaining_files(storage_root)
+
+    removed = await auth_client.delete(f"/api/v1/attachments/{uploaded.json()['id']}")
+    assert removed.status_code == 204
+
+    # The file delete is scheduled on the event loop once the request's
+    # transaction commits, not awaited inline, so give it a few loop turns
+    # to actually run before asserting on the filesystem.
+    for _ in range(50):
+        if not await _remaining_files(storage_root):
+            break
+        await asyncio.sleep(0.01)
+
+    assert await _remaining_files(storage_root) == []
 
 
 async def test_attachments_need_a_token(client: AsyncClient) -> None:
