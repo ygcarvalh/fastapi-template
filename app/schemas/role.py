@@ -1,11 +1,12 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any
 
-from app.models.role import FEATURES_LENGTH, NAME_LENGTH, Role, Scope
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.models.role import FEATURES_LENGTH, NAME_LENGTH, Scope
+from app.schemas.base import ORMModel
 
 
-class PermissionRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+class PermissionRead(ORMModel):
     resource: str
     action: str
 
@@ -39,25 +40,24 @@ class GrantRead(BaseModel):
     action: str
     scope: Scope
 
+    # A `RolePermission` carries its resource/action one level down, under
+    # `.permission`, so a plain `from_attributes=True` read cannot see them:
+    # this flattens the ORM shape into the flat one before validation, and
+    # leaves an already-flat dict or `GrantRead` alone.
+    @model_validator(mode="before")
+    @classmethod
+    def flatten_a_role_permission(cls, value: Any) -> Any:
+        if isinstance(value, dict) or not hasattr(value, "permission"):
+            return value
+        return {
+            "resource": value.permission.resource,
+            "action": value.permission.action,
+            "scope": value.scope,
+        }
 
-class RoleRead(BaseModel):
+
+class RoleRead(ORMModel):
     id: int
     name: str
     features: str | None
     grants: list[GrantRead]
-
-
-def to_role_read(role: Role) -> RoleRead:
-    return RoleRead(
-        id=role.id,
-        name=role.name,
-        features=role.features,
-        grants=[
-            GrantRead(
-                resource=grant.permission.resource,
-                action=grant.permission.action,
-                scope=grant.scope,
-            )
-            for grant in role.grants
-        ],
-    )

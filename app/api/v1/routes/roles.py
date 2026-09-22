@@ -3,13 +3,7 @@ from fastapi import status
 from app.api.deps import CurrentUser, RoleServiceDep, UserServiceDep, require_permission
 from app.api.v1.routing import protected_router
 from app.core.authorization import CREATE, DELETE, READ, ROLES, UPDATE
-from app.schemas.role import (
-    MemberAssignment,
-    PermissionRead,
-    RoleRead,
-    RoleWrite,
-    to_role_read,
-)
+from app.schemas.role import MemberAssignment, PermissionRead, RoleRead, RoleWrite
 from app.schemas.user import UserRead
 
 private_router = protected_router(prefix="/roles", tags=["roles"])
@@ -26,7 +20,7 @@ async def list_permissions(service: RoleServiceDep) -> list[PermissionRead]:
 
 @private_router.get("", dependencies=[require_permission(ROLES, READ)])
 async def list_roles(service: RoleServiceDep) -> list[RoleRead]:
-    return [to_role_read(role) for role in await service.list_all()]
+    return [RoleRead.model_validate(role) for role in await service.list_all()]
 
 
 @private_router.post(
@@ -35,19 +29,19 @@ async def list_roles(service: RoleServiceDep) -> list[RoleRead]:
     dependencies=[require_permission(ROLES, CREATE)],
 )
 async def create_role(data: RoleWrite, service: RoleServiceDep) -> RoleRead:
-    return to_role_read(await service.create(data))
+    return RoleRead.model_validate(await service.create(data))
 
 
 @private_router.get("/{role_id}", dependencies=[require_permission(ROLES, READ)])
 async def read_role(role_id: int, service: RoleServiceDep) -> RoleRead:
-    return to_role_read(await service.get(role_id))
+    return RoleRead.model_validate(await service.get(role_id))
 
 
 @private_router.put("/{role_id}", dependencies=[require_permission(ROLES, UPDATE)])
 async def update_role(
     role_id: int, data: RoleWrite, service: RoleServiceDep
 ) -> RoleRead:
-    return to_role_read(await service.update(role_id, data))
+    return RoleRead.model_validate(await service.update(role_id, data))
 
 
 @private_router.delete(

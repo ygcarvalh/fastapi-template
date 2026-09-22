@@ -32,9 +32,9 @@ from app.schemas.preferences import (
     PreferencesRead,
     PreferencesUpdate,
 )
+from app.schemas.role import GrantRead
 from app.schemas.user import (
     AccountDeactivate,
-    GrantRead,
     RoleAssignment,
     UserCreate,
     UserRead,
