@@ -1,3 +1,5 @@
+from app.core.error_codes import ErrorCode
+from app.core.features import available_features
 from app.models.user import User
 from app.models.user_preferences import (
     DEFAULT_LOCALE,
@@ -5,16 +7,48 @@ from app.models.user_preferences import (
     DEFAULT_TIMEZONE,
     UserPreferences,
 )
-from app.schemas.preferences import PreferencesUpdate
-from app.services.protocols import PreferencesRepositoryProtocol
+from app.schemas.preferences import (
+    AccountFeaturesRead,
+    AccountFeaturesUpdate,
+    PreferencesUpdate,
+)
+from app.services.protocols import (
+    PreferencesRepositoryProtocol,
+    UserRepositoryProtocol,
+)
+from app.services.support import or_not_found
 
 # Fields where null is an answer rather than an omission.
 NULLABLE_FIELDS = frozenset({"features"})
 
 
 class PreferencesService:
-    def __init__(self, repo: PreferencesRepositoryProtocol) -> None:
+    def __init__(
+        self, repo: PreferencesRepositoryProtocol, users: UserRepositoryProtocol
+    ) -> None:
         self._repo = repo
+        self._users = users
+
+    async def _user(self, user_id: int) -> User:
+        return or_not_found(
+            await self._users.get(user_id), "User not found", ErrorCode.USER_NOT_FOUND
+        )
+
+    async def features_for(self, user_id: int) -> AccountFeaturesRead:
+        user = await self._user(user_id)
+        stored = await self.get(user)
+        return AccountFeaturesRead(
+            features=stored.features, available=available_features()
+        )
+
+    async def update_features_for(
+        self, user_id: int, data: AccountFeaturesUpdate
+    ) -> AccountFeaturesRead:
+        user = await self._user(user_id)
+        stored = await self.update(user, PreferencesUpdate(features=data.features))
+        return AccountFeaturesRead(
+            features=stored.features, available=available_features()
+        )
 
     # A row is written on the first change rather than at registration, so an
     # account that never opens settings costs nothing.

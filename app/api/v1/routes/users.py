@@ -14,7 +14,6 @@ from app.api.deps import (
 from app.api.v1.routing import protected_router
 from app.core.authorization import DELETE, FEATURE_FLAGS, READ, UPDATE, USERS
 from app.core.config import get_settings
-from app.core.features import available_features
 from app.core.http.rate_limit import limiter
 from app.schemas.pagination import Page, PageParams
 from app.schemas.preferences import (
@@ -116,10 +115,9 @@ async def read_user(user_id: int, service: UserServiceDep) -> UserRead:
     ],
 )
 async def read_user_features(
-    user_id: int, users: UserServiceDep, preferences: PreferencesServiceDep
+    user_id: int, preferences: PreferencesServiceDep
 ) -> AccountFeaturesRead:
-    stored = await preferences.get(await users.get(user_id))
-    return AccountFeaturesRead(features=stored.features, available=available_features())
+    return await preferences.features_for(user_id)
 
 
 @private_router.put(
@@ -128,12 +126,9 @@ async def read_user_features(
 async def update_user_features(
     user_id: int,
     data: AccountFeaturesUpdate,
-    users: UserServiceDep,
     preferences: PreferencesServiceDep,
 ) -> AccountFeaturesRead:
-    target = await users.get(user_id)
-    stored = await preferences.update(target, PreferencesUpdate(features=data.features))
-    return AccountFeaturesRead(features=stored.features, available=available_features())
+    return await preferences.update_features_for(user_id, data)
 
 
 @private_router.delete(

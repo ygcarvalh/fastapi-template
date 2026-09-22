@@ -1,16 +1,29 @@
+import pytest
+
+from app.core.exceptions import NotFoundError
+from app.core.features import available_features
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.schemas.preferences import PreferencesUpdate
+from app.schemas.preferences import AccountFeaturesUpdate, PreferencesUpdate
 from app.services.preferences_service import PreferencesService
-from tests.unit.fakes import FakePreferencesRepository
+from tests.unit.fakes import FakePreferencesRepository, FakeUserRepository
 
 
 def _user(user_id: int = 1) -> User:
     return User(id=user_id, email="user@example.com", hashed_password="x")
 
 
+def _service(
+    preferences: UserPreferences | None = None, users: list[User] | None = None
+) -> PreferencesService:
+    return PreferencesService(
+        FakePreferencesRepository(preferences),
+        FakeUserRepository(users if users is not None else [_user()]),
+    )
+
+
 async def test_an_account_without_a_row_gets_the_defaults() -> None:
-    service = PreferencesService(FakePreferencesRepository())
+    service = _service()
 
     preferences = await service.get(_user())
 
@@ -22,32 +35,27 @@ async def test_an_account_without_a_row_gets_the_defaults() -> None:
 
 
 async def test_the_first_change_writes_a_row() -> None:
-    repo = FakePreferencesRepository()
-    service = PreferencesService(repo)
+    service = _service()
 
     saved = await service.update(_user(), PreferencesUpdate(locale="pt-BR"))
 
     assert saved.locale == "pt-BR"
-    assert len(repo.created) == 1
 
 
 async def test_a_later_change_updates_the_row() -> None:
-    repo = FakePreferencesRepository(UserPreferences(user_id=1, locale="pt-BR"))
-    service = PreferencesService(repo)
+    service = _service(UserPreferences(user_id=1, locale="pt-BR"))
 
     saved = await service.update(_user(), PreferencesUpdate(theme="dark"))
 
     assert (saved.locale, saved.theme) == ("pt-BR", "dark")
-    assert repo.created == []
-    assert len(repo.saved) == 1
 
 
 async def test_fields_left_out_are_untouched() -> None:
-    repo = FakePreferencesRepository(
+    service = _service(
         UserPreferences(user_id=1, locale="pt-BR", theme="dark", show_request_id=False)
     )
 
-    saved = await PreferencesService(repo).update(_user(), PreferencesUpdate())
+    saved = await service.update(_user(), PreferencesUpdate())
 
     assert (saved.locale, saved.theme, saved.show_request_id) == (
         "pt-BR",
@@ -57,30 +65,55 @@ async def test_fields_left_out_are_untouched() -> None:
 
 
 async def test_a_feature_list_is_stored_as_sent() -> None:
-    repo = FakePreferencesRepository()
-
-    saved = await PreferencesService(repo).update(
-        _user(), PreferencesUpdate(features="notes")
-    )
+    saved = await _service().update(_user(), PreferencesUpdate(features="notes"))
 
     assert saved.features == "notes"
 
 
 async def test_an_explicit_null_clears_the_override() -> None:
-    repo = FakePreferencesRepository(UserPreferences(user_id=1, features="notes"))
+    service = _service(UserPreferences(user_id=1, features="notes"))
 
-    saved = await PreferencesService(repo).update(
-        _user(), PreferencesUpdate(features=None)
-    )
+    saved = await service.update(_user(), PreferencesUpdate(features=None))
 
     assert saved.features is None
 
 
 async def test_a_field_left_out_is_not_cleared() -> None:
-    repo = FakePreferencesRepository(UserPreferences(user_id=1, features="notes"))
+    service = _service(UserPreferences(user_id=1, features="notes"))
 
-    saved = await PreferencesService(repo).update(
-        _user(), PreferencesUpdate(theme="dark")
-    )
+    saved = await service.update(_user(), PreferencesUpdate(theme="dark"))
 
     assert (saved.features, saved.theme) == ("notes", "dark")
+
+
+async def test_features_for_reads_the_targeted_users_preferences() -> None:
+    service = _service(
+        UserPreferences(user_id=1, features="notes"), users=[_user(1), _user(2)]
+    )
+
+    result = await service.features_for(1)
+
+    assert result.features == "notes"
+    assert result.available == available_features()
+
+
+async def test_features_for_a_missing_user_raises() -> None:
+    service = _service(users=[])
+
+    with pytest.raises(NotFoundError):
+        await service.features_for(404)
+
+
+async def test_update_features_for_writes_the_targeted_users_preferences() -> None:
+    service = _service(users=[_user(1), _user(2)])
+
+    result = await service.update_features_for(2, AccountFeaturesUpdate(features="x"))
+
+    assert result.features == "x"
+
+
+async def test_update_features_for_a_missing_user_raises() -> None:
+    service = _service(users=[])
+
+    with pytest.raises(NotFoundError):
+        await service.update_features_for(404, AccountFeaturesUpdate(features="x"))

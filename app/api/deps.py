@@ -186,7 +186,7 @@ AuditLogServiceDep = Annotated[AuditLogService, Depends(get_audit_log_service)]
 
 
 def get_preferences_service(session: SessionDep) -> PreferencesService:
-    return PreferencesService(PreferencesRepository(session))
+    return PreferencesService(PreferencesRepository(session), UserRepository(session))
 
 
 PreferencesServiceDep = Annotated[PreferencesService, Depends(get_preferences_service)]
