@@ -27,10 +27,10 @@ dev = [
     "pytest-asyncio>=0.26",
     "pytest-cov>=6.0",
     "httpx>=0.28",
-    "ruff>=0.16.1",
+    "ruff>=0.16.8",
     "mypy>=1.13",
     "pre-commit>=4.6.1",
-    "git-cliff>=2.7",
+    "git-cliff>=2.14.2",
     "pip-audit>=2.7",
     "testcontainers[postgres]>=4.9",
 ]
