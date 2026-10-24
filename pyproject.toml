@@ -32,7 +32,7 @@ dev = [
     "pre-commit>=4.6.1",
     "git-cliff>=2.7",
     "pip-audit>=2.7",
-    "testcontainers[postgres]>=4.9",
+    "testcontainers[postgres]>=4.15.0",
 ]
 
 [project.scripts]
